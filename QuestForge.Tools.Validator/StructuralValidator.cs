@@ -130,12 +130,43 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         }
     }
 
+    private static readonly System.Text.RegularExpressions.Regex StepIdRegex =
+        new(@"^[a-z][a-z0-9-]*$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
     private static void ValidateStepIds(
         QuestDefinition quest, ValidationContext ctx,
         Dictionary<string, ValidationScope> idMap, HashSet<string> duplicates,
         List<ValidationError> errors)
     {
-        // TODO: implement
+        // Format check — walk all steps at all nesting levels
+        foreach (var seq in quest.Sequences)
+            CheckStepIdFormats(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
+
+        // Uniqueness — duplicates were already detected in pass 1
+        foreach (var id in duplicates)
+            errors.Add(E(ctx, "structural/step-id-duplicate",
+                idMap.TryGetValue(id, out var scope) ? scope.ToString() : "root",
+                $"Step ID '{id}' is not unique within this quest.",
+                stepId: id));
+    }
+
+    private static void CheckStepIdFormats(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (string.IsNullOrEmpty(step.Id) || !StepIdRegex.IsMatch(step.Id))
+                errors.Add(E(ctx, "structural/step-id-invalid-format", scope.ToString(),
+                    $"Step ID '{step.Id}' must match ^[a-z][a-z0-9-]*$ (lowercase letters, digits, hyphens; must start with a letter).",
+                    stepId: step.Id));
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckStepIdFormats(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                }
+        }
     }
 
     private static void ValidateRecoveryRules(
