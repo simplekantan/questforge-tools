@@ -42,10 +42,14 @@ public class SequenceRuleTests
         [
             QuestBuilder.Seq(0,   QuestBuilder.Step("a")),
             QuestBuilder.Seq(5,   QuestBuilder.Step("b")),
-            QuestBuilder.Seq(3,   QuestBuilder.Step("c")),
+            QuestBuilder.Seq(3,   QuestBuilder.Step("c")),   // out of order
             QuestBuilder.Seq(255, QuestBuilder.Step("d"))
         ]);
-        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), "structural/sequence-not-increasing");
+
+        var errors = QuestBuilder.Validate(quest).ToList();
+        QuestBuilder.AssertSingleError(errors, "structural/sequence-not-increasing");
+        // Location identifies the offending sequence number
+        Assert.Equal("seq:3", errors[0].Location);
     }
 
     [Fact]

@@ -50,7 +50,10 @@ public class StepIdRuleTests
             QuestBuilder.Seq(0, QuestBuilder.Step("talk-a"), QuestBuilder.Step("talk-a"))
         ]);
 
-        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), "structural/step-id-duplicate");
+        var errors = QuestBuilder.Validate(quest).ToList();
+        QuestBuilder.AssertSingleError(errors, "structural/step-id-duplicate");
+        Assert.Equal("talk-a", errors[0].StepId);
+        Assert.Equal("seq:0", errors[0].Location);
     }
 
     [Fact]
@@ -82,12 +85,13 @@ public class StepIdRuleTests
             Expect = new PredicateExpect { Predicate = "questSequence(65657) >= 1" }
         };
 
-        var quest = QuestBuilder.Valid(sequences:
-        [
-            QuestBuilder.Seq(0, branch)
-        ]);
+        var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
 
-        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), "structural/step-id-duplicate");
+        var errors = QuestBuilder.Validate(quest).ToList();
+        QuestBuilder.AssertSingleError(errors, "structural/step-id-duplicate");
+        Assert.Equal("inner", errors[0].StepId);
+        // Location reflects the first occurrence's scope: inside branch-step, case 0
+        Assert.Equal("seq:0/branch:branch-step/case:0", errors[0].Location);
     }
 
     [Fact]
