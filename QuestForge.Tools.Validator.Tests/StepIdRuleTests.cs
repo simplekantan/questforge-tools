@@ -31,13 +31,11 @@ public class StepIdRuleTests
     [InlineData("step.a",  "dots not allowed")]
     [InlineData("STEP",    "uppercase not allowed")]
     [InlineData("",        "empty id not allowed")]
-    public void InvalidStepIdFormat_ReportsError(string id, string reason)
+    public void InvalidStepIdFormat_ReportsExactlyOneError(string id, string reason)
     {
         var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, QuestBuilder.Step(id))]);
-
-        var errors = QuestBuilder.Validate(quest).ToList();
-        Assert.True(errors.Any(e => e.Code == "structural/step-id-invalid-format"),
-            $"Expected format error for id '{id}' ({reason}). Got: [{string.Join(", ", errors.Select(e => e.Code))}]");
+        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest),
+            "structural/step-id-invalid-format");
     }
 
     // -------------------------------------------------------------------------
@@ -115,11 +113,9 @@ public class StepIdRuleTests
     }
 
     [Fact]
-    public void UniqueBranchStepIds_AcrossDifferentBranches_AreValid()
+    public void UniqueStepIdsAcrossDifferentBranchCases_AreValid()
     {
-        // Same step IDs in different branch cases are valid (each case is its own scope)
-        // — wait, no: the plan says IDs must be globally unique across the entire quest.
-        // Different branch cases are still within the same quest, so IDs must be unique.
+        // IDs are globally unique across the quest — each branch case uses distinct IDs here.
         var branch = new BranchStep
         {
             Id = "branch-step",
@@ -133,6 +129,25 @@ public class StepIdRuleTests
 
         var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
         QuestBuilder.AssertNoErrors(QuestBuilder.Validate(quest));
+    }
+
+    [Fact]
+    public void StepInsideBranchSharingIdWithBranchStep_ReportsDuplicate()
+    {
+        // The BranchStep's own Id participates in uniqueness.
+        // A step inside one of its branches cannot reuse that same Id.
+        var branch = new BranchStep
+        {
+            Id = "the-branch",
+            Branches =
+            [
+                new BranchCase("default", [QuestBuilder.Step("the-branch")])  // same as BranchStep.Id
+            ],
+            Expect = new PredicateExpect { Predicate = "questSequence(65657) >= 1" }
+        };
+
+        var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
+        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), "structural/step-id-duplicate");
     }
 
     [Fact]
