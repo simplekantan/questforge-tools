@@ -248,7 +248,47 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
     private static void ValidateBranchRules(
         QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
     {
-        // TODO: implement
+        foreach (var seq in quest.Sequences)
+            CheckBranchRules(seq.Steps, new ValidationScope(seq.Sequence), depth: 0, ctx, errors);
+    }
+
+    private static void CheckBranchRules(
+        Step[] steps, ValidationScope scope, int depth, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step is not BranchStep branch)
+                continue;
+
+            var branchDepth = depth + 1;
+
+            if (branchDepth >= 4)
+                errors.Add(E(ctx, "structural/branch-nesting-too-deep", scope.ToString(),
+                    $"Branch '{branch.Id}' at nesting depth {branchDepth} exceeds the maximum of 3.",
+                    stepId: branch.Id, severity: Severity.Error));
+            else if (branchDepth >= 2)
+                errors.Add(E(ctx, "structural/branch-nesting-too-deep", scope.ToString(),
+                    $"Branch '{branch.Id}' at nesting depth {branchDepth} approaches the limit of 3.",
+                    stepId: branch.Id, severity: Severity.Warning));
+
+            if (branch.Branches.Length == 0 || branch.Branches[^1].When != "default")
+                errors.Add(E(ctx, "structural/branch-missing-default", scope.ToString(),
+                    $"Branch '{branch.Id}': last case must have 'when: \"default\"'.",
+                    stepId: branch.Id));
+
+            for (var i = 0; i < branch.Branches.Length; i++)
+            {
+                var branchCase = branch.Branches[i];
+                var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+
+                if ((branchCase.Steps?.Length ?? 0) == 0)
+                    errors.Add(E(ctx, "structural/branch-empty", inner.ToString(),
+                        $"Branch '{branch.Id}' case {i} (when: \"{branchCase.When}\") has no steps.",
+                        stepId: branch.Id));
+
+                CheckBranchRules(branchCase.Steps ?? [], inner, branchDepth, ctx, errors);
+            }
+        }
     }
 
     private static void ValidateFragmentRules(
