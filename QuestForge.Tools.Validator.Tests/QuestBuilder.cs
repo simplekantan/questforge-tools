@@ -40,6 +40,13 @@ internal static class QuestBuilder
         Expect      = expect is null ? null : new PredicateExpect { Predicate = expect }
     };
 
+    public static TravelStep Step(string id, RecoverConfig recover) => new()
+    {
+        Id          = id,
+        Destination = new TravelDestination(128),
+        Recover     = recover
+    };
+
     public static ValidationContext Ctx(uint questId = 65657) =>
         new("test-quest.json", questId);
 

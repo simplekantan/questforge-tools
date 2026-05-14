@@ -174,7 +174,75 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         Dictionary<string, ValidationScope> idMap, HashSet<string> duplicates,
         List<ValidationError> errors)
     {
-        // TODO: implement
+        foreach (var seq in quest.Sequences)
+            CheckRecoveryRules(seq.Steps, new ValidationScope(seq.Sequence), ctx, idMap, duplicates, errors);
+    }
+
+    private static void CheckRecoveryRules(
+        Step[] steps, ValidationScope scope, ValidationContext ctx,
+        Dictionary<string, ValidationScope> idMap, HashSet<string> duplicates,
+        List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step is AwaitUserStep awaitStep && awaitStep.Reason?.Length > 200)
+                errors.Add(E(ctx, "structural/recover-reason-too-long", scope.ToString(),
+                    $"Step '{step.Id}': 'reason' must be ≤200 characters (got {awaitStep.Reason.Length}).",
+                    stepId: step.Id));
+
+            if (step.Recover is { } recover)
+            {
+                RecoverAction?[] actions =
+                [
+                    recover.OnTimeout, recover.OnObstacle, recover.OnAdapterError,
+                    recover.OnPostconditionFailed, recover.OnPlayerDefeated
+                ];
+
+                foreach (var action in actions)
+                {
+                    if (action is GotoRecoverAction gotoAction)
+                        ValidateGotoAction(gotoAction, step, scope, ctx, idMap, duplicates, errors);
+                    else if (action is AwaitUserRecoverAction awaitAction && awaitAction.Reason?.Length > 200)
+                        errors.Add(E(ctx, "structural/recover-reason-too-long", scope.ToString(),
+                            $"Step '{step.Id}': recovery 'reason' must be ≤200 characters (got {awaitAction.Reason.Length}).",
+                            stepId: step.Id));
+                }
+            }
+
+            if (step is BranchStep branch)
+            {
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckRecoveryRules(branch.Branches[i].Steps ?? [], inner, ctx, idMap, duplicates, errors);
+                }
+            }
+        }
+    }
+
+    private static void ValidateGotoAction(
+        GotoRecoverAction gotoAction, Step step, ValidationScope sourceScope, ValidationContext ctx,
+        Dictionary<string, ValidationScope> idMap, HashSet<string> duplicates,
+        List<ValidationError> errors)
+    {
+        var targetId = gotoAction.StepId;
+
+        if (duplicates.Contains(targetId))
+            return; // target is ambiguous — step-id-duplicate already reported, suppress goto checks
+
+        if (!idMap.TryGetValue(targetId, out var targetScope))
+        {
+            errors.Add(E(ctx, "structural/recovery-goto-unresolved", sourceScope.ToString(),
+                $"Step '{step.Id}': recovery goto references unknown step ID '{targetId}'.",
+                stepId: step.Id));
+        }
+        else if (!sourceScope.IsCompatibleWith(targetScope))
+        {
+            errors.Add(E(ctx, "structural/recovery-goto-cross-branch", sourceScope.ToString(),
+                $"Step '{step.Id}': recovery goto to '{targetId}' crosses scope boundaries " +
+                $"(source: {sourceScope}, target: {targetScope}).",
+                stepId: step.Id));
+        }
     }
 
     private static void ValidateBranchRules(
