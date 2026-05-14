@@ -80,7 +80,7 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
     private static void ValidateRequiredFields(
         QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
     {
-        if (string.IsNullOrEmpty(quest.SchemaVersion))
+        if (string.IsNullOrWhiteSpace(quest.SchemaVersion))
             errors.Add(E(ctx, "structural/required-field-missing", "root",
                 "'schemaVersion' is required and must be non-empty."));
 
@@ -88,7 +88,7 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
             errors.Add(E(ctx, "structural/required-field-missing", "root",
                 "'supportStatus' is required."));
 
-        if (string.IsNullOrEmpty(quest.LastVerifiedPatch))
+        if (string.IsNullOrWhiteSpace(quest.LastVerifiedPatch))
             errors.Add(E(ctx, "structural/required-field-missing", "root",
                 "'lastVerifiedPatch' is required and must be non-empty."));
 

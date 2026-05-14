@@ -58,13 +58,17 @@ internal static class QuestBuilder
         string? stepId = null)
     {
         var list = errors.ToList();
-        var matching = list.Where(e => e.Code == code).ToList();
-        Assert.True(matching.Count == 1,
-            $"Expected exactly 1 error with code '{code}' but got {matching.Count}. " +
-            $"All errors: [{string.Join(", ", list.Select(e => e.Code))}]");
+
+        // Assert exactly one error total — prevents mutation tests from silently passing
+        // when the validator emits unexpected additional errors alongside the expected one.
+        Assert.True(list.Count == 1,
+            $"Expected exactly 1 error total but got {list.Count}: " +
+            $"[{string.Join(", ", list.Select(e => $"'{e.Code}': {e.Message}"))}]");
+
+        Assert.Equal(code, list[0].Code);
 
         if (stepId is not null)
-            Assert.Equal(stepId, matching[0].StepId);
+            Assert.Equal(stepId, list[0].StepId);
     }
 
     public static void AssertNoError(IEnumerable<ValidationError> errors, string code)

@@ -29,6 +29,13 @@ public class RequiredFieldTests
     }
 
     [Fact]
+    public void WhitespaceOnlySchemaVersion_ReportsError()
+    {
+        var quest = QuestBuilder.Valid() with { SchemaVersion = "   " };
+        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), Code);
+    }
+
+    [Fact]
     public void MissingSupportStatus_ReportsError()
     {
         var quest = QuestBuilder.Valid() with { SupportStatus = null };
@@ -46,6 +53,13 @@ public class RequiredFieldTests
     public void EmptyLastVerifiedPatch_ReportsError()
     {
         var quest = QuestBuilder.Valid() with { LastVerifiedPatch = "" };
+        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), Code);
+    }
+
+    [Fact]
+    public void WhitespaceOnlyLastVerifiedPatch_ReportsError()
+    {
+        var quest = QuestBuilder.Valid() with { LastVerifiedPatch = "   " };
         QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), Code);
     }
 
