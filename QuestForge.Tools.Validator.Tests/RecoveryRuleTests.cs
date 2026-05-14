@@ -169,6 +169,21 @@ public class RecoveryRuleTests
     }
 
     [Fact]
+    public void GotoRecoverAction_TargetingStepInDifferentSequence_ReportsCrossBranch()
+    {
+        // Schema §6.1: goto jumps to "another step in the same sequence (or same branch sub-sequence)".
+        // Cross-sequence goto must be rejected.
+        var quest = QuestBuilder.Valid(sequences:
+        [
+            QuestBuilder.Seq(0,   QuestBuilder.Step("seq-zero-step")),
+            QuestBuilder.Seq(255,
+                QuestBuilder.Step("seq-255-step",
+                    new RecoverConfig { OnTimeout = new GotoRecoverAction { StepId = "seq-zero-step" } }))
+        ]);
+        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest), "structural/recovery-goto-cross-branch");
+    }
+
+    [Fact]
     public void GotoRecoverAction_WithinSameBranchCase_IsValid()
     {
         var caseBStep = QuestBuilder.Step("case-step-b",
