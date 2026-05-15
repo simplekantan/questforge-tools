@@ -1,3 +1,4 @@
+using System.Text.Json;
 using QuestForge.Schema;
 
 namespace QuestForge.Tools.Validator;
@@ -291,11 +292,85 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         }
     }
 
-    private static void ValidateFragmentRules(
+    private void ValidateFragmentRules(
         QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
     {
-        // TODO: implement
+        foreach (var seq in quest.Sequences)
+            CheckFragmentRules(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
     }
+
+    private void CheckFragmentRules(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step is FragmentStep fragmentStep)
+                ValidateFragmentStep(fragmentStep, scope, ctx, errors);
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckFragmentRules(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                }
+        }
+    }
+
+    private void ValidateFragmentStep(
+        FragmentStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (!fragments.TryGetFragment(step.Ref, out var fragment))
+        {
+            errors.Add(E(ctx, "structural/fragment-not-found", scope.ToString(),
+                $"Step '{step.Id}': fragment '{step.Ref}' not found in registry.",
+                stepId: step.Id));
+            return; // suppress param checks per plan GWT
+        }
+
+        if (ContainsFragmentStep(fragment!.Steps))
+            errors.Add(E(ctx, "structural/fragment-nested", scope.ToString(),
+                $"Step '{step.Id}': fragment '{step.Ref}' references another fragment (nesting not allowed in v1).",
+                stepId: step.Id));
+
+        foreach (var param in fragment.Parameters.Where(p => p.Required))
+            if (step.Params is null || !step.Params.ContainsKey(param.Name))
+                errors.Add(E(ctx, "structural/fragment-missing-param", scope.ToString(),
+                    $"Step '{step.Id}': required parameter '{param.Name}' not provided for fragment '{step.Ref}'.",
+                    stepId: step.Id));
+
+        if (step.Params is not null)
+            foreach (var (paramName, paramValue) in step.Params)
+            {
+                var declared = fragment.Parameters.FirstOrDefault(p => p.Name == paramName);
+                if (declared is null) continue;
+                if (!IsParamTypeMatch(declared.Type, paramValue))
+                    errors.Add(E(ctx, "structural/fragment-param-type-mismatch", scope.ToString(),
+                        $"Step '{step.Id}': parameter '{paramName}' expected type '{declared.Type}' but got {paramValue.ValueKind}.",
+                        stepId: step.Id));
+            }
+    }
+
+    private static bool ContainsFragmentStep(Step[] steps)
+    {
+        foreach (var step in steps)
+        {
+            if (step is FragmentStep) return true;
+            if (step is BranchStep branch)
+                foreach (var c in branch.Branches)
+                    if (ContainsFragmentStep(c.Steps ?? [])) return true;
+        }
+        return false;
+    }
+
+    private static bool IsParamTypeMatch(string declaredType, JsonElement value) =>
+        declaredType switch
+        {
+            "position" => value.ValueKind == JsonValueKind.Object,
+            "npcId"    => value.ValueKind == JsonValueKind.Number,
+            "itemId"   => value.ValueKind == JsonValueKind.Number,
+            "string"   => value.ValueKind == JsonValueKind.String,
+            _          => true
+        };
 
     private static void ValidateStepTypeRules(
         QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
