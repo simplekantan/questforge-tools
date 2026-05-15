@@ -21,7 +21,18 @@ public class BranchRuleTests
     [Fact]
     public void BranchStep_NonEmptyCase_IsValid()
     {
-        var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, Branch("b", QuestBuilder.Step("step-a")))]);
+        // Two-case branch — both cases non-empty — isolates the empty rule from the default rule.
+        var branch = new BranchStep
+        {
+            Id = "the-branch",
+            Branches =
+            [
+                new BranchCase("playerLevel() >= 20", [QuestBuilder.Step("case-a")]),
+                new BranchCase("default",             [QuestBuilder.Step("case-b")])
+            ],
+            Expect = new PredicateExpect { Predicate = "questSequence(65657) >= 1" }
+        };
+        var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
         QuestBuilder.AssertNoErrors(QuestBuilder.Validate(quest));
     }
 
@@ -57,19 +68,13 @@ public class BranchRuleTests
         };
         var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
         var errors = QuestBuilder.Validate(quest).ToList();
+        Assert.Equal(2, errors.Count);
         Assert.Equal(2, errors.Count(e => e.Code == "structural/branch-empty"));
     }
 
     // =========================================================================
     // structural/branch-nesting-too-deep
     // =========================================================================
-
-    [Fact]
-    public void BranchStep_DepthOne_IsValid()
-    {
-        var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, Branch("b1", QuestBuilder.Step("leaf")))]);
-        QuestBuilder.AssertNoErrors(QuestBuilder.Validate(quest));
-    }
 
     [Fact]
     public void BranchStep_DepthTwo_ReportsOneWarning()
@@ -109,6 +114,8 @@ public class BranchRuleTests
         var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, d1)]);
 
         var errors = QuestBuilder.Validate(quest).ToList();
+        // d2 and d3 still warn (not escalated to errors); d4 is the error
+        Assert.Equal(2, errors.Count(e => e.Code == "structural/branch-nesting-too-deep" && e.Severity == Severity.Warning));
         Assert.Contains(errors, e => e.Code == "structural/branch-nesting-too-deep" && e.Severity == Severity.Error);
     }
 
