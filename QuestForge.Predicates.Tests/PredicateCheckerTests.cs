@@ -45,39 +45,49 @@ public class PredicateCheckerTests
         => AssertNoSemanticErrors("questSequence(65) >= 3");
 
     [Fact]
-    public void UnknownFunction_Typo_ReportsErrorWithSuggestion()
+    public void UnknownFunction_Typo_ReportsExactlyOneErrorWithSuggestion()
     {
         var errors = Semantic("questSequnece(65) >= 3");
-        Assert.Contains(errors, e => e.Code == "unknown-function");
-        var err = errors.First(e => e.Code == "unknown-function");
-        Assert.NotNull(err.Suggestion);
-        Assert.Contains("questSequence", err.Suggestion);
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("unknown-function", errors[0].Code);
+        Assert.NotNull(errors[0].Suggestion);
+        Assert.Contains("questSequence", errors[0].Suggestion);
     }
 
     [Fact]
-    public void UnknownFunction_CaseWrong_ReportsErrorWithSuggestion()
+    public void UnknownFunction_CaseWrong_ReportsExactlyOneErrorWithSuggestion()
     {
         var errors = Semantic("isQuestcomplete(65)");
-        Assert.Contains(errors, e => e.Code == "unknown-function");
-        var err = errors.First(e => e.Code == "unknown-function");
-        Assert.Contains("isQuestComplete", err.Suggestion ?? "");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("unknown-function", errors[0].Code);
+        Assert.Contains("isQuestComplete", errors[0].Suggestion ?? "");
     }
 
     [Fact]
-    public void UnknownFunction_TooFarAway_ReportsErrorWithNoSuggestion()
+    public void UnknownFunction_TooFarAway_ReportsExactlyOneErrorWithNoSuggestion()
     {
         var errors = Semantic("frobnicate(1) >= 0");
-        Assert.Contains(errors, e => e.Code == "unknown-function");
-        var err = errors.First(e => e.Code == "unknown-function");
-        Assert.Null(err.Suggestion);
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("unknown-function", errors[0].Code);
+        Assert.Null(errors[0].Suggestion);
     }
 
     [Fact]
-    public void BareIdentifier_ReportsUnknownFunction()
+    public void BareIdentifier_ReportsExactlyOneUnknownFunctionError()
     {
-        // "Gladiator" → parser treats as FunctionCall("Gladiator",[]) → unknown-function
         var errors = Semantic("Gladiator");
-        Assert.Contains(errors, e => e.Code == "unknown-function");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("unknown-function", errors[0].Code);
+    }
+
+    [Fact]
+    public void UnknownFunction_InCompoundExpression_OnlyErrorsForThatPart()
+    {
+        // Left side has typo; right side (questFlag) is valid.
+        // Checker must walk both sides — not short-circuit after the first error.
+        var errors = Semantic("questSequnece(65) >= 3 and questFlag(65, 1)");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("unknown-function", errors[0].Code);
     }
 
     // ---- §4.6 arity-mismatch --------------------------------------------
