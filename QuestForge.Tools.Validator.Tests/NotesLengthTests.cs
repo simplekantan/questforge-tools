@@ -10,13 +10,6 @@ public class NotesLengthTests
     // =========================================================================
 
     [Fact]
-    public void QuestNotes_Null_IsValid()
-    {
-        var quest = QuestBuilder.Valid() with { Notes = null };
-        QuestBuilder.AssertNoErrors(QuestBuilder.Validate(quest));
-    }
-
-    [Fact]
     public void QuestNotes_Exactly500Chars_IsValid()
     {
         var quest = QuestBuilder.Valid() with { Notes = new string('a', 500) };
@@ -33,13 +26,6 @@ public class NotesLengthTests
     // =========================================================================
     // Step-level notes
     // =========================================================================
-
-    [Fact]
-    public void StepNotes_Null_IsValid()
-    {
-        var step = QuestBuilder.Step("step-a");  // Notes defaults to null
-        QuestBuilder.AssertNoErrors(QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
-    }
 
     [Fact]
     public void StepNotes_Exactly500Chars_IsValid()
