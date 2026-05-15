@@ -37,9 +37,10 @@ if (!Directory.Exists(rootDir))
 
 // ---- Load fragments ---------------------------------------------------------
 
-var allErrors     = new List<ValidationError>();
-var fragments     = new List<FragmentDefinition>();
-var fragmentsDir  = Path.Combine(rootDir, "fragments");
+var allErrors    = new List<ValidationError>();
+var fragments    = new List<FragmentDefinition>();
+var fileLineMap  = new Dictionary<string, string[]>(StringComparer.Ordinal);
+var fragmentsDir = Path.Combine(rootDir, "fragments");
 
 if (Directory.Exists(fragmentsDir))
 {
@@ -49,6 +50,7 @@ if (Directory.Exists(fragmentsDir))
         try
         {
             var json     = File.ReadAllText(filePath);
+            fileLineMap[rel] = json.Split('\n');
             var fragment = JsonSerializer.Deserialize<FragmentDefinition>(json, QuestForgeJsonContext.QuestFileOptions);
             if (fragment is not null)
                 fragments.Add(fragment);
@@ -73,8 +75,8 @@ if (Directory.Exists(fragmentsDir))
 
 // ---- Validate quests --------------------------------------------------------
 
-var registry = new InMemoryFragmentRegistry(fragments);
-var pipeline = new ValidatorPipeline([new StructuralValidator(registry), new PredicateValidator(registry)]);
+var registry  = new InMemoryFragmentRegistry(fragments);
+var pipeline  = new ValidatorPipeline([new StructuralValidator(registry), new PredicateValidator(registry)]);
 var questsDir = Path.Combine(rootDir, "quests");
 
 if (Directory.Exists(questsDir))
@@ -82,6 +84,11 @@ if (Directory.Exists(questsDir))
     foreach (var filePath in Directory.EnumerateFiles(questsDir, "*.json", SearchOption.AllDirectories).Order())
     {
         var rel = Rel(rootDir, filePath);
+
+        // Read lines for line-number resolution (heuristic text scan)
+        try { fileLineMap[rel] = File.ReadAllLines(filePath); }
+        catch (IOException) { /* ignore; line numbers will be null for this file */ }
+
         var (quest, loadErrors) = QuestLoader.LoadQuest(filePath);
 
         if (loadErrors.Count > 0)
@@ -101,7 +108,7 @@ var errorCount   = allErrors.Count(e => e.Severity == Severity.Error);
 var warningCount = allErrors.Count(e => e.Severity == Severity.Warning);
 
 if (format == "json")
-    EmitJson(allErrors, errorCount, warningCount);
+    EmitJson(allErrors, errorCount, warningCount, fileLineMap);
 else
     EmitText(allErrors, errorCount, warningCount);
 
@@ -115,6 +122,47 @@ return 0;
 
 static string Rel(string root, string path) =>
     Path.GetRelativePath(root, path).Replace('\\', '/');
+
+// Heuristic: find the 1-based line number for an error by searching for its
+// step ID or sequence number in the raw file text. Imprecise but avoids a
+// full re-parse. Replaced by exact positions once issue #N is resolved.
+static int? ResolveLineNumber(ValidationError err, Dictionary<string, string[]> lineMap)
+{
+    if (!lineMap.TryGetValue(err.FilePath, out var lines)) return null;
+
+    // Best match: step ID — unique within a file
+    if (err.StepId is not null)
+    {
+        var pattern = $"\"{err.StepId}\"";
+        for (var i = 0; i < lines.Length; i++)
+            if (lines[i].Contains(pattern, StringComparison.Ordinal))
+                return i + 1;
+    }
+
+    // Fallback: sequence number
+    var loc = err.Location;
+    if (loc.StartsWith("seq:", StringComparison.Ordinal))
+    {
+        var seqToken = loc.Split('/')[0]; // "seq:N"
+        if (seqToken.Length > 4 && int.TryParse(seqToken[4..], out var seqNum))
+        {
+            for (var i = 0; i < lines.Length; i++)
+                if (lines[i].Contains($"\"sequence\": {seqNum}", StringComparison.Ordinal) ||
+                    lines[i].Contains($"\"sequence\":{seqNum}", StringComparison.Ordinal))
+                    return i + 1;
+        }
+    }
+
+    // Fallback: chain key
+    if (loc.StartsWith("chain", StringComparison.Ordinal))
+    {
+        for (var i = 0; i < lines.Length; i++)
+            if (lines[i].Contains("\"chain\"", StringComparison.Ordinal))
+                return i + 1;
+    }
+
+    return null;
+}
 
 static void EmitText(IReadOnlyList<ValidationError> errors, int errorCount, int warningCount)
 {
@@ -132,7 +180,9 @@ static void EmitText(IReadOnlyList<ValidationError> errors, int errorCount, int 
             : "Validation passed.");
 }
 
-static void EmitJson(IReadOnlyList<ValidationError> errors, int errorCount, int warningCount)
+static void EmitJson(
+    IReadOnlyList<ValidationError> errors, int errorCount, int warningCount,
+    Dictionary<string, string[]> lineMap)
 {
     var output = new
     {
@@ -143,7 +193,8 @@ static void EmitJson(IReadOnlyList<ValidationError> errors, int errorCount, int 
             file     = e.FilePath,
             location = e.Location,
             stepId   = e.StepId,
-            severity = e.Severity.ToString().ToLowerInvariant()
+            severity = e.Severity.ToString().ToLowerInvariant(),
+            line     = ResolveLineNumber(e, lineMap)
         }),
         summary = new { errors = errorCount, warnings = warningCount }
     };
