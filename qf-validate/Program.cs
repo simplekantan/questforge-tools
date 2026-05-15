@@ -74,7 +74,7 @@ if (Directory.Exists(fragmentsDir))
 // ---- Validate quests --------------------------------------------------------
 
 var registry = new InMemoryFragmentRegistry(fragments);
-var pipeline = new ValidatorPipeline([new StructuralValidator(registry)]);
+var pipeline = new ValidatorPipeline([new StructuralValidator(registry), new PredicateValidator(registry)]);
 var questsDir = Path.Combine(rootDir, "quests");
 
 if (Directory.Exists(questsDir))
