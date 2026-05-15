@@ -207,6 +207,21 @@ public class FragmentRuleTests
     // =========================================================================
 
     [Fact]
+    public void FragmentStep_ExtraUndeclaredParamProvided_IsValid()
+    {
+        // Extra params not in the fragment's Parameters list are silently ignored —
+        // the schema only requires declared params to be present and correctly typed.
+        var frag = Frag("travel/somewhere", []); // no declared parameters
+        var registry = new InMemoryFragmentRegistry([frag]);
+        var quest = QuestBuilder.Valid(sequences:
+        [
+            QuestBuilder.Seq(0, FragStep("frag-a", "travel/somewhere",
+                new Dictionary<string, JsonElement> { ["unknownParam"] = Json("42") }))
+        ]);
+        QuestBuilder.AssertNoErrors(QuestBuilder.Validate(quest, registry: registry));
+    }
+
+    [Fact]
     public void FragmentStep_FragmentHasNoFragmentSteps_IsValid()
     {
         var frag = Frag("travel/somewhere", [],
@@ -229,6 +244,32 @@ public class FragmentRuleTests
             Ref = "common/some-other-fragment"
         };
         var frag = Frag("travel/somewhere", [], steps: [nested]);
+        var registry = new InMemoryFragmentRegistry([frag]);
+        var quest = QuestBuilder.Valid(sequences:
+        [
+            QuestBuilder.Seq(0, FragStep("frag-a", "travel/somewhere"))
+        ]);
+        QuestBuilder.AssertSingleError(QuestBuilder.Validate(quest, registry: registry),
+            "structural/fragment-nested");
+    }
+
+    [Fact]
+    public void FragmentStep_FragmentContainsFragmentStepInsideBranch_ReportsError()
+    {
+        // ContainsFragmentStep recurses into BranchStep cases.
+        // A FragmentStep nested inside a branch within a fragment is also disallowed.
+        var nestedFragStep = new FragmentStep
+        {
+            Id  = "branch-nested-ref",
+            Ref = "common/some-other-fragment"
+        };
+        var branch = new BranchStep
+        {
+            Id       = "inner-branch",
+            Branches = [new BranchCase("default", [nestedFragStep])],
+            Expect   = null
+        };
+        var frag = Frag("travel/somewhere", [], steps: [branch]);
         var registry = new InMemoryFragmentRegistry([frag]);
         var quest = QuestBuilder.Valid(sequences:
         [
