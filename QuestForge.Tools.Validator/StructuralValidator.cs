@@ -530,7 +530,31 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
     private static void ValidateNotesLength(
         QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
     {
-        // TODO: implement
+        if (quest.Notes?.Length > 500)
+            errors.Add(E(ctx, "structural/notes-too-long", "root",
+                $"Quest notes must be ≤500 characters (got {quest.Notes.Length})."));
+
+        foreach (var seq in quest.Sequences)
+            CheckNotesLength(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
+    }
+
+    private static void CheckNotesLength(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step.Notes?.Length > 500)
+                errors.Add(E(ctx, "structural/notes-too-long", scope.ToString(),
+                    $"Step '{step.Id}': notes must be ≤500 characters (got {step.Notes.Length}).",
+                    stepId: step.Id));
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckNotesLength(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                }
+        }
     }
 
     // -------------------------------------------------------------------------
