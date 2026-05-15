@@ -375,7 +375,156 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
     private static void ValidateStepTypeRules(
         QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
     {
-        // TODO: implement
+        ValidatePrereqStates(quest, ctx, errors);
+        ValidateChainRules(quest, ctx, errors);
+
+        foreach (var seq in quest.Sequences)
+            CheckStepTypeRules(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
+    }
+
+    private static void CheckStepTypeRules(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            switch (step)
+            {
+                case TalkStep talk:
+                    if (talk.Target is not null && talk.Targets is not null)
+                        errors.Add(E(ctx, "structural/step-target-conflict", scope.ToString(),
+                            $"Step '{step.Id}': 'target' and 'targets' are mutually exclusive.", stepId: step.Id));
+                    ValidateDialogueChoices(step.Id, talk.DialogueChoices, scope, ctx, errors);
+                    break;
+
+                case TurnInStep turnIn:
+                    ValidateDialogueChoices(step.Id, turnIn.DialogueChoices, scope, ctx, errors);
+                    break;
+
+                case DutyStep duty:
+                    ValidateDutyStep(duty, scope, ctx, errors);
+                    break;
+
+                case UseItemStep useItem:
+                    ValidateUseItemStep(useItem, scope, ctx, errors);
+                    break;
+
+                case CutsceneStep cutscene:
+                    if (cutscene.Skip is not ("never" or "ifAllowed"))
+                        errors.Add(E(ctx, "structural/cutscene-skip-invalid", scope.ToString(),
+                            $"Step '{step.Id}': 'skip' must be 'never' or 'ifAllowed' (got '{cutscene.Skip}').",
+                            stepId: step.Id));
+                    break;
+
+                case MinigameStep minigame:
+                    if (minigame.Kind is not ("sniping" or "memory" or "aiming" or "rhythm" or "selection" or "other"))
+                        errors.Add(E(ctx, "structural/minigame-kind-invalid", scope.ToString(),
+                            $"Step '{step.Id}': minigame 'kind' '{minigame.Kind}' is not a known value.",
+                            stepId: step.Id));
+                    break;
+
+                case BranchStep branch:
+                    for (var i = 0; i < branch.Branches.Length; i++)
+                    {
+                        var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                        CheckStepTypeRules(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                    }
+                    break;
+            }
+        }
+    }
+
+    private static void ValidateDialogueChoices(
+        string stepId, DialogueChoice[] choices, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        for (var i = 0; i < choices.Length; i++)
+        {
+            var choice = choices[i];
+            if (choice.Type is not ("list" or "yesno" or "talk"))
+                errors.Add(E(ctx, "structural/dialogue-choice-type-invalid", scope.ToString(),
+                    $"Step '{stepId}': dialogueChoice[{i}].type '{choice.Type}' must be 'list', 'yesno', or 'talk'.",
+                    stepId: stepId));
+
+            if (choice.Type == "yesno" && choice.Answer is not ("yes" or "no"))
+                errors.Add(E(ctx, "structural/dialogue-choice-answer-invalid", scope.ToString(),
+                    $"Step '{stepId}': dialogueChoice[{i}] answer '{choice.Answer}' must be 'yes' or 'no'.",
+                    stepId: stepId));
+        }
+    }
+
+    private static void ValidateDutyStep(
+        DutyStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (step.Kind == "regular")
+        {
+            if (step.DutyId is null)
+                errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
+                    $"Step '{step.Id}': duty kind 'regular' requires 'dutyId'.", stepId: step.Id));
+            if (step.EntryNpc is null)
+                errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
+                    $"Step '{step.Id}': duty kind 'regular' requires 'entryNpc'.", stepId: step.Id));
+        }
+        else if (step.Kind == "spd")
+        {
+            if (step.Trigger is null)
+                errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
+                    $"Step '{step.Id}': duty kind 'spd' requires 'trigger'.", stepId: step.Id));
+            if (step.DutyId is not null)
+                errors.Add(E(ctx, "structural/duty-invalid-field-for-kind", scope.ToString(),
+                    $"Step '{step.Id}': 'dutyId' must not be set for duty kind 'spd'.", stepId: step.Id));
+        }
+    }
+
+    private static void ValidateUseItemStep(
+        UseItemStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (step.Target is null) return;
+
+        switch (step.Target.Kind)
+        {
+            case "npc" when step.Target.NpcId is null:
+                errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
+                    $"Step '{step.Id}': use-item target kind 'npc' requires 'npcId'.", stepId: step.Id));
+                break;
+            case "object" when step.Target.InteractableId is null:
+                errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
+                    $"Step '{step.Id}': use-item target kind 'object' requires 'interactableId'.", stepId: step.Id));
+                break;
+            case "position":
+                if (step.Target.Position is null)
+                    errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
+                        $"Step '{step.Id}': use-item target kind 'position' requires 'position'.", stepId: step.Id));
+                if (step.Target.Tolerance is null)
+                    errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
+                        $"Step '{step.Id}': use-item target kind 'position' requires 'tolerance'.", stepId: step.Id));
+                break;
+        }
+    }
+
+    private static void ValidatePrereqStates(
+        QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (quest.Requirements is null) return;
+        foreach (var prereq in quest.Requirements.Prereqs)
+            if (prereq.State is not ("complete" or "accepted"))
+                errors.Add(E(ctx, "structural/prereq-state-invalid", "root",
+                    $"Prereq {prereq.QuestId}: state '{prereq.State}' must be 'complete' or 'accepted'."));
+    }
+
+    private static void ValidateChainRules(
+        QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (quest.Chain is null) return;
+        var next = quest.Chain.Next;
+        if (next.Length == 0) return;
+
+        for (var i = 0; i < next.Length; i++)
+            if (string.IsNullOrEmpty(next[i].When))
+                errors.Add(E(ctx, "structural/chain-when-empty", "root",
+                    $"chain.next[{i}]: 'when' must not be empty or null."));
+
+        if (next[^1].When != "default")
+            errors.Add(E(ctx, "structural/chain-missing-default", "root",
+                "chain.next: last entry must have 'when: \"default\"'."));
     }
 
     private static void ValidateNotesLength(
