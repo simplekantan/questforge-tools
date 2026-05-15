@@ -2,22 +2,6 @@ using QuestForge.Predicates;
 
 namespace QuestForge.Predicates.Tests;
 
-/// <summary>
-/// Stub scope for fragment parameter tests.
-/// </summary>
-file sealed class TestScope : IFragmentParameterScope
-{
-    private readonly Dictionary<string, PredicateType> _params;
-
-    public TestScope(params (string name, PredicateType type)[] parameters)
-    {
-        _params = parameters.ToDictionary(p => p.name, p => p.type);
-    }
-
-    public bool TryGetParameterType(string name, out PredicateType type)
-        => _params.TryGetValue(name, out type);
-}
-
 public class ParserTests
 {
     // ------------------------------------------------------------------ //
@@ -195,13 +179,15 @@ public class ParserTests
     public void ErrorRecovery_EmptyArg_StillParsesSecondCall()
     {
         // "questFlag(65, ) and questFlag(65, 2)"
-        // → has parse error, but And node still exists (recovery)
+        // Parser recovers at 'and' — second call must appear in the AST
         var result = PredicateParser.Parse("questFlag(65, ) and questFlag(65, 2)");
         Assert.NotEmpty(result.Errors);
-        // Best-effort: some parseable structure should exist
-        // At minimum the second call should produce something
-        // The result should have an And node or at least one function call
-        Assert.NotNull(result.Ast);
+        // Recovery: the And node must exist with the second questFlag on the right
+        var and = Assert.IsType<PredicateAst.And>(result.Ast);
+        var right = Assert.IsType<PredicateAst.FunctionCall>(and.Right);
+        Assert.Equal("questFlag", right.Name);
+        Assert.Equal(2, right.Args.Count);
+        Assert.Equal(new PredicateAst.IntLiteral(2), right.Args[1]);
     }
 
     [Fact]
