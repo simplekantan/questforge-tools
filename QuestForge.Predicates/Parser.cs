@@ -273,8 +273,8 @@ internal sealed class Parser
         // Parse up to 3 key:value pairs
         while (Current.Kind != TokenKind.RBrace && Current.Kind != TokenKind.EndOfInput)
         {
-            // Expect identifier key
-            if (Current.Kind != TokenKind.Identifier)
+            // Expect identifier key (bare or quoted string, e.g. x or "x")
+            if (Current.Kind != TokenKind.Identifier && Current.Kind != TokenKind.String)
             {
                 _errors.Add(new ParseError("parse-error", $"expected key identifier in position literal, got '{Current.Text}'", Current.Column));
                 hasError = true;
