@@ -114,8 +114,9 @@ public class PredicateValidatorTests
         ]);
 
         var errors = Validate(quest).ToList();
-        Assert.Contains(errors, e =>
-            e.Code == "predicate/unknown-function" && e.Location == "seq:0");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("predicate/unknown-function", errors[0].Code);
+        Assert.Equal("seq:0", errors[0].Location);
     }
 
     [Fact]
@@ -132,9 +133,9 @@ public class PredicateValidatorTests
         ]);
 
         var errors = Validate(quest).ToList();
-        Assert.Contains(errors, e =>
-            e.Code == "predicate/unknown-function" &&
-            e.Location == "seq:0/step:step-a/skipIf");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("predicate/unknown-function",     errors[0].Code);
+        Assert.Equal("seq:0/step:step-a/skipIf", errors[0].Location);
     }
 
     [Fact]
@@ -194,9 +195,9 @@ public class PredicateValidatorTests
         };
 
         var errors = Validate(quest).ToList();
-        Assert.Contains(errors, e =>
-            e.Code == "predicate/unknown-function" &&
-            e.Location == "chain/next[0]/when");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("predicate/unknown-function", errors[0].Code);
+        Assert.Equal("chain/next[0]/when",         errors[0].Location);
     }
 
     [Fact]
@@ -227,9 +228,9 @@ public class PredicateValidatorTests
 
         var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
         var errors = Validate(quest).ToList();
-        Assert.Contains(errors, e =>
-            e.Code == "predicate/unknown-function" &&
-            e.Location == "seq:0/step:the-branch/branches[0]/when");
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("predicate/unknown-function",              errors[0].Code);
+        Assert.Equal("seq:0/step:the-branch/branches[0]/when", errors[0].Location);
     }
 
     [Fact]
@@ -250,9 +251,8 @@ public class PredicateValidatorTests
 
         var quest = QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, branch)]);
         var errors = Validate(quest).ToList();
-        Assert.Contains(errors, e =>
-            e.Code == "predicate/unknown-function" &&
-            e.Location.Contains("inner-step") &&
-            e.Location.EndsWith("/expect"));
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("predicate/unknown-function",                                   errors[0].Code);
+        Assert.Equal("seq:0/branch:the-branch/case:0/step:inner-step/expect", errors[0].Location);
     }
 }
