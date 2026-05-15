@@ -34,6 +34,15 @@ public class StepTypeRuleTests
     }
 
     [Fact]
+    public void TalkStep_NeitherTargetNorTargets_IsValid()
+    {
+        // Both Target and Targets are nullable — no "must have one" rule exists.
+        // The engine advances dialogue without moving when neither is set.
+        var step = new TalkStep { Id = "talk-a", Target = null, Targets = null, Expect = null };
+        QuestBuilder.AssertNoErrors(QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
+    }
+
+    [Fact]
     public void TalkStep_BothTargetAndTargets_ReportsConflict()
     {
         var step = new TalkStep
@@ -242,15 +251,15 @@ public class StepTypeRuleTests
     // =========================================================================
 
     [Theory]
-    [InlineData("list")]
-    [InlineData("yesno")]
-    [InlineData("talk")]
-    public void TalkStep_ValidDialogueChoiceType_IsValid(string type)
+    [InlineData("list",  "TEXT_JOBDRK301_02054_A1_000_116")]  // text sheet reference
+    [InlineData("yesno", "yes")]                               // literal yes/no
+    [InlineData("talk",  null)]                                // no answer for talk
+    public void TalkStep_ValidDialogueChoiceType_IsValid(string type, string? answer)
     {
         var step = new TalkStep
         {
             Id              = "talk-a",
-            DialogueChoices = [new DialogueChoice(type, "prompt", "yes")],
+            DialogueChoices = [new DialogueChoice(type, "prompt", answer)],
             Expect          = null
         };
         QuestBuilder.AssertNoErrors(
