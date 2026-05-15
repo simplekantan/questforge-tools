@@ -95,7 +95,6 @@ internal sealed class Parser
         var op = TryParseComparisonOp();
         if (op == null) return left;
 
-        int opCol = Previous.Column;
         var right = ParseRhsLiteral();
         if (right == null) return left; // error already added
 
@@ -149,27 +148,6 @@ internal sealed class Parser
                 var val = Current.Text;
                 Advance();
                 return new PredicateAst.StringLiteral(val);
-            }
-            case TokenKind.Error when Current.Text == "-":
-            {
-                // Negative number on RHS
-                Advance(); // consume '-'
-                if (Current.Kind == TokenKind.NumberInt)
-                {
-                    var val = -long.Parse(Current.Text);
-                    Advance();
-                    return new PredicateAst.IntLiteral(val);
-                }
-                if (Current.Kind == TokenKind.NumberFloat)
-                {
-                    var fval = -float.Parse(Current.Text, System.Globalization.CultureInfo.InvariantCulture);
-                    Advance();
-                    // Floats not supported on RHS
-                    _errors.Add(new ParseError("parse-error", "float literals are not supported in v1", col));
-                    return null;
-                }
-                _errors.Add(new ParseError("parse-error", "expected number after '-'", col));
-                return null;
             }
             default:
                 _errors.Add(new ParseError("parse-error", $"expected literal after comparison operator, got '{Current.Text}'", col));
@@ -260,21 +238,6 @@ internal sealed class Parser
                 var paramCol = Current.Column;
                 Advance();
                 return ResolveParameterRef(name, paramCol);
-            }
-
-            // Error token for '-' — negative position or number?
-            case TokenKind.Error when Current.Text == "-":
-            {
-                // Treat as negative number (though unusual at atom level outside position)
-                Advance();
-                if (Current.Kind == TokenKind.NumberInt)
-                {
-                    var val = -long.Parse(Current.Text);
-                    Advance();
-                    return new PredicateAst.IntLiteral(val);
-                }
-                _errors.Add(new ParseError("parse-error", "unexpected '-'", col));
-                return null;
             }
 
             default:
@@ -487,20 +450,6 @@ internal sealed class Parser
                 var paramCol = Current.Column;
                 Advance();
                 return ResolveParameterRef(name, paramCol);
-            }
-
-            case TokenKind.Error when Current.Text == "-":
-            {
-                // Negative number
-                Advance();
-                if (Current.Kind == TokenKind.NumberInt)
-                {
-                    var val = -long.Parse(Current.Text);
-                    Advance();
-                    return new PredicateAst.IntLiteral(val);
-                }
-                _errors.Add(new ParseError("parse-error", "expected number after '-'", col));
-                return null;
             }
 
             case TokenKind.RParen:

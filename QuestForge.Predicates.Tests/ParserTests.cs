@@ -321,6 +321,27 @@ public class ParserTests
     }
 
     // ------------------------------------------------------------------ //
+    // Unary minus outside position literal keys → parse error (plan §3.1)
+    // ------------------------------------------------------------------ //
+
+    [Fact]
+    public void UnaryMinus_OnRhsOfComparison_ProducesError()
+    {
+        // "questSequence(65) >= -3" — minus only valid inside position literal keys
+        var result = PredicateParser.Parse("questSequence(65) >= -3");
+        Assert.NotEmpty(result.Errors);
+        Assert.Contains(result.Errors, e => e.Code == "parse-error");
+    }
+
+    [Fact]
+    public void UnaryMinus_InFunctionArg_ProducesError()
+    {
+        var result = PredicateParser.Parse("questSequence(-3)");
+        Assert.NotEmpty(result.Errors);
+        Assert.Contains(result.Errors, e => e.Code == "parse-error");
+    }
+
+    // ------------------------------------------------------------------ //
     // Float literals in non-playerNear functions produce error
     // ------------------------------------------------------------------ //
 
