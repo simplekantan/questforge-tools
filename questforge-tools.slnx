@@ -1,5 +1,7 @@
 <Solution>
   <Project Path="qf-validate/qf-validate.csproj" />
+  <Project Path="QuestForge.Predicates.Tests/QuestForge.Predicates.Tests.csproj" />
+  <Project Path="QuestForge.Predicates/QuestForge.Predicates.csproj" />
   <Project Path="QuestForge.Schema/QuestForge.Schema.csproj" />
   <Project Path="QuestForge.Tools.Validator.Tests/QuestForge.Tools.Validator.Tests.csproj" />
   <Project Path="QuestForge.Tools.Validator/QuestForge.Tools.Validator.csproj" />
