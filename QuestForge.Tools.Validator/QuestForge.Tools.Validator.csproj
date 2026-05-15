@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\QuestForge.Schema\QuestForge.Schema.csproj" />
+    <ProjectReference Include="..\QuestForge.Predicates\QuestForge.Predicates.csproj" />
   </ItemGroup>
 
   <PropertyGroup>
