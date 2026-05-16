@@ -34,6 +34,7 @@ public static class FunctionRegistry
         new("playerLowestGearCondition", new Fixed(0),           [],              Int),
         new("gearsetExists",             new Fixed(1),           [String],        Bool),
         new("inNewGamePlus",             new Fixed(0),           [],              Bool),
+        new("isAttuned",                 new Fixed(1),           [Int],           Bool),
     ];
 
     public static IReadOnlyDictionary<string, FunctionSignature> All { get; } =

@@ -106,7 +106,7 @@ public sealed class SnapshotState
     public GameStateSnapshot ToSnapshot(DateTimeOffset at)
         => new(at, Zone, Position, _activeQuest, QuestSequence, QuestFlags,
                QuestAccepted, QuestCompleted, LastNpcInteracted, LastNpcPosition,
-               null, null, 0u);
+               null, null, 0u, null);  // Phase 11B: LastAttuned not tracked by replay extractor yet
 
     /// <summary>
     /// Convenience overload used by <see cref="Quest.TraceToQuestExtractor"/>.
@@ -115,7 +115,7 @@ public sealed class SnapshotState
     public GameStateSnapshot ToSnapshot(DateTimeOffset at, QuestId activeQuest)
         => new(at, Zone, Position, activeQuest, QuestSequence, QuestFlags,
                QuestAccepted, QuestCompleted, LastNpcInteracted, LastNpcPosition,
-               null, null, 0u);
+               null, null, 0u, null);  // Phase 11B: LastAttuned not tracked by replay extractor yet
 
     /// <summary>
     /// Record an NPC interaction action (called by the extractor at action boundaries,

@@ -5,9 +5,87 @@ namespace QuestForge.Predicates.Tests;
 public class FunctionRegistryTests
 {
     [Fact]
-    public void All_Contains27Functions()
+    public void All_Contains28Functions()
     {
-        Assert.Equal(27, FunctionRegistry.All.Count);
+        // Updated from 27 to 28 for Phase 11B: isAttuned added.
+        Assert.Equal(28, FunctionRegistry.All.Count);
+    }
+
+    [Fact]
+    public void IsAttuned_Signature_IsCorrect()
+    {
+        /*
+         * RED: Will fail until Builder adds the isAttuned entry.
+         *
+         * CONTRACT: Given FunctionRegistry.TryGet("isAttuned", out var sig),
+         *           Then sig.Name == "isAttuned"
+         *                sig.Arity is Fixed(1)
+         *                sig.ParameterTypes is [Int]
+         *                sig.ReturnType is Bool
+         *
+         * BUILDER GUIDANCE: new("isAttuned", new Fixed(1), [Int], Bool)
+         *   — one Int parameter (the aetheryte ID), returns Bool.
+         */
+
+        // Act
+        var found = FunctionRegistry.TryGet("isAttuned", out var sig);
+
+        // Assert
+        Assert.True(found, "isAttuned should be registered in FunctionRegistry");
+        Assert.Equal("isAttuned", sig.Name);
+        var fixed1 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(1, fixed1.Count);
+        Assert.Single(sig.ParameterTypes);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Bool, sig.ReturnType);
+    }
+
+    [Fact]
+    public void IsAttuned_Parser_AcceptsValidCall()
+    {
+        /*
+         * RED: Will fail until Builder adds the isAttuned entry (parser uses registry for validation).
+         *
+         * CONTRACT: Given the input string "isAttuned(53)",
+         *           When PredicateParser.Parse is called,
+         *           Then IsSuccess == true
+         *                Ast is a FunctionCall("isAttuned", [IntLiteral(53)]).
+         *
+         * BUILDER GUIDANCE: PredicateParser validates function names/arity against FunctionRegistry.
+         *   Once isAttuned is registered, "isAttuned(53)" should parse successfully.
+         */
+
+        // Act
+        var result = PredicateParser.Parse("isAttuned(53)");
+
+        // Assert
+        Assert.True(result.IsSuccess, $"Parse should succeed. Errors: {string.Join("; ", result.Errors.Select(e => e.Message))}");
+        var call = Assert.IsType<PredicateAst.FunctionCall>(result.Ast);
+        Assert.Equal("isAttuned", call.Name);
+        Assert.Single(call.Args);
+        var arg = Assert.IsType<PredicateAst.IntLiteral>(call.Args[0]);
+        Assert.Equal(53L, arg.Value);
+    }
+
+    [Fact]
+    public void IsAttuned_SuggestSimilar_SuggestsForTypo()
+    {
+        /*
+         * RED: Will fail until Builder adds the isAttuned entry.
+         *
+         * CONTRACT: Given the typo "isAtuned" (one 't' missing),
+         *           When FunctionRegistry.SuggestSimilar("isAtuned"),
+         *           Then the result includes "isAttuned".
+         *
+         * BUILDER GUIDANCE: Levenshtein distance between "isAtuned" and "isAttuned" is 1,
+         *   which is <= the default maxDistance of 2. The suggestion should appear.
+         */
+
+        // Act
+        var suggestions = FunctionRegistry.SuggestSimilar("isAtuned");
+
+        // Assert
+        Assert.Contains("isAttuned", suggestions);
     }
 
     [Theory]

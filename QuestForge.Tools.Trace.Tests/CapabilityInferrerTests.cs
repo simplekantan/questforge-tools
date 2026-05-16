@@ -251,6 +251,235 @@ public sealed class CapabilityInferrerTests
         Assert.Empty(caps);
     }
 
+    // =========================================================================
+    // Phase 11B — AttunementStep capability tests (B1-B4 from PHASE_11B_PLAN.md §3.10)
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithAttunementStep_EmitsStepAttune()
+    {
+        /*
+         * RED: Will fail until Builder adds [typeof(AttunementStep)] = "step:attune"
+         *      to CapabilityInferrer.StepCapabilities.
+         *
+         * CONTRACT: Given a QuestDefinition with one AttunementStep,
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result includes "step:attune".
+         *
+         * BUILDER GUIDANCE: Add to StepCapabilities dictionary:
+         *   [typeof(AttunementStep)] = "step:attune",
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99001u,
+            Name              = "Attune Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new AttunementStep
+                        {
+                            Id     = "attune-limsa",
+                            Target = new AetheryteId(8)
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:attune", caps);
+    }
+
+    [Fact]
+    public void Infer_AttunementStepWithIsAttunedSkipIf_EmitsPredicateIsAttuned()
+    {
+        /*
+         * RED: Will fail until Builder adds AttunementStep to StepCapabilities AND
+         *      isAttuned is registered in FunctionRegistry (for parser-based extraction).
+         *
+         * CONTRACT: Given a quest with AttunementStep.SkipIf = PredicateExpect("isAttuned(53)"),
+         *           When Infer,
+         *           Then result also includes "predicate:isAttuned".
+         *
+         * BUILDER GUIDANCE: CapabilityInferrer.WalkExpect extracts the function name
+         *   by splitting on '(' and taking the first token. "isAttuned(53)".Split('(')[0]
+         *   == "isAttuned". This works without any registry lookup.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99002u,
+            Name              = "Attune with skipIf",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new AttunementStep
+                        {
+                            Id     = "attune-with-skipif",
+                            Target = new AetheryteId(53),
+                            SkipIf = new PredicateExpect { Predicate = "isAttuned(53)" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:attune", caps);
+        Assert.Contains("predicate:isAttuned", caps);
+    }
+
+    [Fact]
+    public void Infer_MultipleAttunementSteps_DeduplicatesStepAttune()
+    {
+        /*
+         * RED: Will fail until Builder adds AttunementStep to StepCapabilities.
+         *
+         * CONTRACT: Given two AttunementSteps in the same quest,
+         *           When Infer,
+         *           Then "step:attune" appears exactly once (deduplication via HashSet).
+         *
+         * BUILDER GUIDANCE: CapabilityInferrer uses HashSet<string> for caps — adding the
+         *   same string twice has no effect.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99003u,
+            Name              = "Two Attunements",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new AttunementStep { Id = "attune-1", Target = new AetheryteId(1) },
+                        new AttunementStep { Id = "attune-2", Target = new AetheryteId(2) }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Equal(1, caps.Count(c => c == "step:attune"));
+    }
+
+    [Fact]
+    public void Infer_MixedSteps_SortedAlphabetically_IncludesAttune()
+    {
+        /*
+         * RED: Will fail until Builder adds AttunementStep to StepCapabilities.
+         *
+         * CONTRACT: Given a quest with TravelStep, AttunementStep, TalkStep,
+         *           When Infer,
+         *           Then the result is sorted (StringComparer.Ordinal) and
+         *                "step:attune" appears in alphabetical order among
+         *                "step:talk", "step:travel".
+         *
+         * BUILDER GUIDANCE: The sorted list is ["step:attune", "step:talk", "step:travel"]
+         *   — "attune" < "talk" < "travel" in ordinal sort.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99004u,
+            Name              = "Mixed Steps",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new TravelStep
+                        {
+                            Id          = "travel-to-crystal",
+                            Destination = new TravelDestination(130)
+                        },
+                        new AttunementStep
+                        {
+                            Id     = "attune-crystal",
+                            Target = new AetheryteId(8)
+                        },
+                        new TalkStep
+                        {
+                            Id     = "talk-after",
+                            Target = new NpcLocation(1000u, 130, new Position3(0f, 0f, 0f))
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        // Verify sorted order contains all three step types
+        var stepCaps = caps.Where(c => c.StartsWith("step:")).ToList();
+        Assert.Contains("step:attune", stepCaps);
+        Assert.Contains("step:talk", stepCaps);
+        Assert.Contains("step:travel", stepCaps);
+
+        // Verify sorted: attune < talk < travel
+        var attuneIdx  = caps.ToList().IndexOf("step:attune");
+        var talkIdx    = caps.ToList().IndexOf("step:talk");
+        var travelIdx  = caps.ToList().IndexOf("step:travel");
+        Assert.True(attuneIdx < talkIdx,   "step:attune should sort before step:talk");
+        Assert.True(talkIdx   < travelIdx, "step:talk should sort before step:travel");
+    }
+
     // -------------------------------------------------------------------------
     // De-duplication: same step type in multiple sequences → one tag
     // -------------------------------------------------------------------------
