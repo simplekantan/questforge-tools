@@ -15,5 +15,6 @@ public static class FixtureModelSerializer
         Encoder                = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
 
-    public static string Serialize(FixtureModel fixture) => throw new NotImplementedException();
+    public static string Serialize(FixtureModel fixture)
+        => JsonSerializer.Serialize(fixture, Options);
 }
