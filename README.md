@@ -14,6 +14,9 @@ Schema validator and CLI tools for [QuestForge](https://github.com/simplekantan/
 | `QuestForge.Tools.Validator` | Structural validator: 20+ rules covering required fields, step IDs, recovery gotos, branch nesting, fragment references, step-type constraints, and more. |
 | `QuestForge.Tools.Validator.Tests` | xUnit test suite (136 tests). Runs without a game instance. |
 | `qf-validate` | CLI entry point. Discovers `quests/**/*.json` and `fragments/**/*.json`, validates each file, and reports errors in text or JSON format. |
+| `QuestForge.Tools.Trace` | Trace reader + fixture/quest extractor library. Reads `.jsonl` trace files. |
+| `QuestForge.Tools.Trace.Tests` | xUnit test suite (44 tests). |
+| `qf-trace` | CLI entry point for trace extraction. |
 
 ---
 
@@ -51,6 +54,46 @@ ERROR  quests/arr/msq/65657-close-to-home.json  seq:0
   "summary": { "errors": 1, "warnings": 0 }
 }
 ```
+
+---
+
+## qf-trace
+
+Four subcommands for working with engine run traces.
+
+### extract-fixture
+
+Reads a `.jsonl` trace file and produces a fixture JSON draft:
+
+```
+qf-trace extract-fixture <trace.jsonl> [--quest-data <dir>] [--out <file>]
+```
+
+### validate-fixture
+
+Cross-validates a committed fixture against its referenced quest file:
+
+```
+qf-trace validate-fixture <fixture.json> [--quest-data <dir>] [--fail-on-warning]
+```
+
+### list-fixtures
+
+Lists all fixtures in `questforge-data/fixtures/engine/` with capability coverage:
+
+```
+qf-trace list-fixtures [--quest-data <dir>]
+```
+
+### extract-quest
+
+Reads a `.jsonl` trace and produces a `QuestDefinition` draft:
+
+```
+qf-trace extract-quest <trace.jsonl> [--quest-data <dir>] [--out <file>]
+```
+
+Output includes a TODO list of fields that require manual completion (name, expansion, prerequisites).
 
 ---
 
