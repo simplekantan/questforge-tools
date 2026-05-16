@@ -54,7 +54,7 @@ public sealed class TraceToFixtureExtractor
             var actionType = decision.ActionType.ToLowerInvariant();
 
             // Skip terminal actions
-            if (actionType == "done" || actionType == "awaituser") continue;
+            if (TraceConstants.IsTerminalAction(actionType)) continue;
 
             var entry = new TransitionEntry(decision.StepId, actionType);
 

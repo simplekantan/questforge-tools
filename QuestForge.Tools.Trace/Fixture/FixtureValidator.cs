@@ -11,7 +11,7 @@ public sealed class FixtureValidator
 {
     private readonly string _questDataRoot;
 
-    private static readonly HashSet<string> AllowedTerminalOutcomes = ["done", "awaitUser"];
+    private static readonly HashSet<string> AllowedTerminalOutcomes = TraceConstants.AllowedTerminalOutcomes;
     private static readonly HashSet<string> SupportedSchemaVersions = ["1.0.0"];
     private static readonly HashSet<string> KnownInitialStates = ["fresh"];
 
@@ -85,10 +85,18 @@ public sealed class FixtureValidator
             return new FixtureValidationResult(errors, warnings);
         }
 
-        // Collect all valid step IDs
+        // Collect all valid step IDs — walk nested branch steps so inner step IDs
+        // from BranchStep.Branches[i].Steps are included (FragmentStep has no child steps).
+        static IEnumerable<Step> AllSteps(Step s) => s switch
+        {
+            BranchStep b => new[] { s }.Concat(
+                b.Branches?.SelectMany(c => c.Steps?.SelectMany(AllSteps) ?? []) ?? []),
+            _ => [s]
+        };
         var validStepIds = quest.Sequences
-            .SelectMany(s => s.Steps)
+            .SelectMany(seq => seq.Steps.SelectMany(AllSteps))
             .Select(s => s.Id)
+            .Where(id => !string.IsNullOrEmpty(id))
             .ToHashSet();
 
         // Check step IDs in transitions

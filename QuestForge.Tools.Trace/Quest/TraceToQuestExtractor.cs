@@ -91,7 +91,7 @@ public sealed class TraceToQuestExtractor
 
             // Skip terminal actions
             var actionTypeLower = decision.ActionType.ToLowerInvariant();
-            if (actionTypeLower == "done" || actionTypeLower == "awaituser" || actionTypeLower == "wait")
+            if (TraceConstants.IsTerminalAction(actionTypeLower) || actionTypeLower == TraceConstants.ActionWait)
                 continue;
 
             // a. before snapshot

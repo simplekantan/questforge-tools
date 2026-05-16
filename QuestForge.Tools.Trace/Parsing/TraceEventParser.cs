@@ -23,12 +23,18 @@ public static class TraceEventParser
         return ReadStream(stream, warnings);
     }
 
-    /// <summary>Reads from a <see cref="Stream"/>.</summary>
+    /// <summary>Reads from a <see cref="Stream"/> line by line (avoids a full-content string allocation).</summary>
     public static IReadOnlyList<TraceEvent> ReadStream(Stream stream, TextWriter? warnings = null)
     {
+        var result = new List<TraceEvent>();
         using var reader = new StreamReader(stream, leaveOpen: true);
-        var content = reader.ReadToEnd();
-        return ReadText(content, warnings);
+        string? line;
+        while ((line = reader.ReadLine()) != null)
+        {
+            var ev = ParseLine(line, warnings);
+            if (ev != null) result.Add(ev);
+        }
+        return result;
     }
 
     /// <summary>Reads from a raw JSONL string.</summary>
@@ -83,7 +89,10 @@ public static class TraceEventParser
             };
         }
 
-        // No "type" discriminator: detect by properties present
+        // WHY: no "type" discriminator — TraceTestHelpers.MakeTrace serialises events via their
+        // concrete C# type (JsonSerializer.Serialize(e, e.GetType(), ...)) which skips the
+        // [JsonPolymorphic] discriminator. This heuristic branch exists solely for test-helper
+        // compatibility; real Phase 7+ traces from the plugin always include the "type" field.
         return DetectAndDeserialize(root, line, warnings);
     }
 

@@ -46,60 +46,49 @@ public sealed class SnapshotState
         switch (ev.Method)
         {
             case "GetPlayerZone":
-                if (ev.Value.HasValue && ev.Value.Value.TryGetProperty("value", out var zv))
-                {
-                    try { Zone = new ZoneId(zv.GetUInt32()); } catch { /* swallow type mismatch */ }
-                }
+                if (ev.Value.HasValue
+                    && ev.Value.Value.TryGetProperty("value", out var zv)
+                    && zv.TryGetUInt32(out var zoneVal))
+                    Zone = new ZoneId(zoneVal);
                 return true;
 
             case "GetPlayerPosition":
                 if (ev.Value.HasValue && ev.Value.Value.ValueKind == JsonValueKind.Object)
                 {
-                    try
-                    {
-                        var x = ev.Value.Value.TryGetProperty("x", out var xp) ? xp.GetSingle() : 0f;
-                        var y = ev.Value.Value.TryGetProperty("y", out var yp) ? yp.GetSingle() : 0f;
-                        var z = ev.Value.Value.TryGetProperty("z", out var zp) ? zp.GetSingle() : 0f;
-                        Position = new WorldPosition(x, y, z);
-                    }
-                    catch { /* swallow type mismatch */ }
+                    var root = ev.Value.Value;
+                    var x = root.TryGetProperty("x", out var xp) && xp.TryGetSingle(out var xv) ? xv : 0f;
+                    var y = root.TryGetProperty("y", out var yp) && yp.TryGetSingle(out var yv) ? yv : 0f;
+                    var z = root.TryGetProperty("z", out var zp) && zp.TryGetSingle(out var zv2) ? zv2 : 0f;
+                    Position = new WorldPosition(x, y, z);
                 }
                 return true;
 
             case "GetQuestSequence":
                 if (QuestArgMatches(ev) && ev.Value.HasValue
-                    && ev.Value.Value.ValueKind == JsonValueKind.Number)
-                {
-                    try { QuestSequence = ev.Value.Value.GetInt32(); } catch { /* swallow */ }
-                }
+                    && ev.Value.Value.TryGetInt32(out var seq))
+                    QuestSequence = seq;
                 return true;
 
             case "GetQuestFlags":
                 if (QuestArgMatches(ev) && ev.Value.HasValue
-                    && ev.Value.Value.ValueKind == JsonValueKind.Number)
-                {
-                    try { QuestFlags = ev.Value.Value.GetUInt32(); } catch { /* swallow */ }
-                }
+                    && ev.Value.Value.TryGetUInt32(out var flags))
+                    QuestFlags = flags;
                 return true;
 
             case "IsQuestAccepted":
                 if (QuestArgMatches(ev) && ev.Value.HasValue
                     && ev.Value.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                {
-                    try { QuestAccepted = ev.Value.Value.GetBoolean(); } catch { /* swallow */ }
-                }
+                    QuestAccepted = ev.Value.Value.GetBoolean();
                 return true;
 
             case "IsQuestComplete":
                 if (QuestArgMatches(ev) && ev.Value.HasValue
                     && ev.Value.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                {
-                    try { QuestCompleted = ev.Value.Value.GetBoolean(); } catch { /* swallow */ }
-                }
+                    QuestCompleted = ev.Value.Value.GetBoolean();
                 return true;
 
             default:
-                return false; // unrecognised
+                return false;
         }
     }
 
