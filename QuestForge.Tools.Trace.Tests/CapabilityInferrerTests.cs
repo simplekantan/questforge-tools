@@ -1,0 +1,304 @@
+using QuestForge.Schema;
+using QuestForge.Tools.Trace.Capabilities;
+using Xunit;
+
+namespace QuestForge.Tools.Trace.Tests;
+
+/// <summary>
+/// Tests for <see cref="CapabilityInferrer"/>.
+/// §12.5 sanity test from PHASE_10_PLAN.md.
+/// All tests are RED: they will fail until Builder implements CapabilityInferrer.Infer.
+/// </summary>
+public sealed class CapabilityInferrerTests
+{
+    // -------------------------------------------------------------------------
+    // Quest 66130 baseline: travel+talk steps with playerNear and questSequence predicates
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Infer_Quest66130_ReturnsExpectedCapabilities_Sorted()
+    {
+        /*
+         * RED: Will fail until Builder implements CapabilityInferrer.Infer.
+         *
+         * CONTRACT: Given a QuestDefinition matching quest 66130
+         *           (two sequences: [travel,talk] and [travel,talk-with-isQuestComplete]),
+         *           When  CapabilityInferrer.Infer(quest),
+         *           Then  result == ["predicate:isQuestComplete","predicate:playerNear",
+         *                           "predicate:questSequence","step:talk","step:travel"]
+         *                 (alphabetically sorted, de-duplicated).
+         *
+         * BUILDER GUIDANCE:
+         *   - Walk each step in each sequence.
+         *   - Emit "step:<discriminator>" per step type.
+         *   - Walk Expect / SkipIf recursively; for PredicateExpect extract function name
+         *     (substring before '(') and emit "predicate:<name>".
+         *   - Return sorted, de-duplicated result.
+         */
+
+        // Arrange — build a minimal QuestDefinition mirroring 66130's structure in-memory.
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 66130u,
+            Name              = "Coming to Ul'dah",
+            Expansion         = "arr",
+            Category          = "msq",
+            Enabled           = true,
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements { MinLevel = 1, Prereqs = [] },
+            AcceptFrom        = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new TravelStep
+                        {
+                            Id          = "travel-to-wymond",
+                            Destination = new TravelDestination(182, new Position3(35.56f, 4.0f, -151.18f)),
+                            Expect      = new PredicateExpect
+                                { Predicate = "playerNear({\"x\":35.56,\"y\":4.0,\"z\":-151.18}, 3)" }
+                        },
+                        new TalkStep
+                        {
+                            Id     = "talk-to-wymond",
+                            Target = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f)),
+                            Expect = new PredicateExpect { Predicate = "questSequence(66130) >= 255" }
+                        }
+                    ]
+                },
+                new QuestSequence
+                {
+                    Sequence = 255,
+                    Steps =
+                    [
+                        new TravelStep
+                        {
+                            Id          = "travel-to-momodi",
+                            Destination = new TravelDestination(182, new Position3(21.84f, 7.0f, -81.13f)),
+                            Expect      = new PredicateExpect
+                                { Predicate = "playerNear({\"x\":21.84,\"y\":7.0,\"z\":-81.13}, 3)" }
+                        },
+                        new TalkStep
+                        {
+                            Id     = "turn-in-to-momodi",
+                            Target = new NpcLocation(1003988u, 182, new Position3(21.84f, 7.0f, -81.13f)),
+                            Expect = new PredicateExpect { Predicate = "isQuestComplete(66130)" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        var expected = new[]
+        {
+            "predicate:isQuestComplete",
+            "predicate:playerNear",
+            "predicate:questSequence",
+            "step:talk",
+            "step:travel"
+        };
+
+        Assert.Equal(expected, caps);
+    }
+
+    // -------------------------------------------------------------------------
+    // BranchStep → engine:branching capability
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Infer_QuestWithBranchStep_EmitsEngineBranching()
+    {
+        /*
+         * RED: Will fail until Builder implements CapabilityInferrer.Infer.
+         *
+         * CONTRACT: Given a QuestDefinition containing a BranchStep,
+         *           When  Infer,
+         *           Then  result contains "engine:branching" and "step:branch".
+         *
+         * BUILDER GUIDANCE:
+         *   - Emit "step:branch" for any BranchStep (standard step discriminator rule).
+         *   - Additionally emit "engine:branching" when any BranchStep is present.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 1u,
+            Name              = "Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new BranchStep
+                        {
+                            Id       = "branch-1",
+                            Branches = []
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:branch",     caps);
+        Assert.Contains("engine:branching", caps);
+    }
+
+    // -------------------------------------------------------------------------
+    // FragmentStep → engine:fragments capability
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Infer_QuestWithFragmentStep_EmitsEngineFragments()
+    {
+        /*
+         * RED: Will fail until Builder implements CapabilityInferrer.Infer.
+         *
+         * CONTRACT: Given a QuestDefinition containing a FragmentStep,
+         *           When  Infer,
+         *           Then  result contains "engine:fragments" and "step:fragment".
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 2u,
+            Name              = "Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new FragmentStep { Id = "frag-1", Ref = "some-fragment" }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:fragment",    caps);
+        Assert.Contains("engine:fragments", caps);
+    }
+
+    // -------------------------------------------------------------------------
+    // Empty quest → empty capability list
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Infer_QuestWithNoSteps_ReturnsEmptyList()
+    {
+        /*
+         * RED: Will fail until Builder implements CapabilityInferrer.Infer.
+         *
+         * CONTRACT: Given a QuestDefinition with Sequences == [] (no steps),
+         *           When  Infer,
+         *           Then  result is empty.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 0u,
+            Name              = "Empty",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "none", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences         = []
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Empty(caps);
+    }
+
+    // -------------------------------------------------------------------------
+    // De-duplication: same step type in multiple sequences → one tag
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Infer_MultipleSequencesWithSameStepType_DeduplicatesTags()
+    {
+        /*
+         * RED: Will fail until Builder implements CapabilityInferrer.Infer.
+         *
+         * CONTRACT: Given a quest with TravelStep in both sequence 0 and sequence 1,
+         *           When  Infer,
+         *           Then  "step:travel" appears exactly once.
+         */
+
+        // Arrange
+        var travelStep0 = new TravelStep
+        {
+            Id          = "t0",
+            Destination = new TravelDestination(182)
+        };
+        var travelStep1 = new TravelStep
+        {
+            Id          = "t1",
+            Destination = new TravelDestination(182)
+        };
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 3u,
+            Name              = "Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence { Sequence = 0, Steps = [travelStep0] },
+                new QuestSequence { Sequence = 1, Steps = [travelStep1] }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Equal(1, caps.Count(c => c == "step:travel"));
+    }
+}

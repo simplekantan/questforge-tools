@@ -5,4 +5,7 @@
   <Project Path="QuestForge.Schema/QuestForge.Schema.csproj" />
   <Project Path="QuestForge.Tools.Validator.Tests/QuestForge.Tools.Validator.Tests.csproj" />
   <Project Path="QuestForge.Tools.Validator/QuestForge.Tools.Validator.csproj" />
+  <Project Path="qf-trace/qf-trace.csproj" />
+  <Project Path="QuestForge.Tools.Trace/QuestForge.Tools.Trace.csproj" />
+  <Project Path="QuestForge.Tools.Trace.Tests/QuestForge.Tools.Trace.Tests.csproj" />
 </Solution>
