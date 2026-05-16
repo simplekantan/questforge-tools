@@ -1,0 +1,39 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Trace extractor and validator tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout questforge-tools
+        uses: actions/checkout@v4
+        with:
+          path: questforge-tools
+
+      - name: Checkout questforge (cross-repo dependency)
+        uses: actions/checkout@v4
+        with:
+          repository: simplekantan/questforge
+          path: questforge
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.x'
+
+      - name: Build
+        working-directory: questforge-tools
+        run: dotnet build questforge-tools.slnx --configuration Release
+
+      - name: Run tests
+        working-directory: questforge-tools
+        run: |
+          dotnet test QuestForge.Tools.Validator.Tests/QuestForge.Tools.Validator.Tests.csproj --configuration Release --no-build
+          dotnet test QuestForge.Tools.Trace.Tests/QuestForge.Tools.Trace.Tests.csproj --configuration Release --no-build
