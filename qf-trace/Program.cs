@@ -40,6 +40,11 @@ internal static class Program
         if (cliArgs.QuestDataRoot != null)
         {
             resolvedRoot = Path.GetFullPath(cliArgs.QuestDataRoot);
+            if (!Directory.Exists(resolvedRoot))
+            {
+                Console.Error.WriteLine($"qf-trace: quest-data directory not found: {resolvedRoot}");
+                return 1;
+            }
         }
         else
         {

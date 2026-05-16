@@ -45,7 +45,6 @@ public static class CliArgsParser
         bool    stdout         = false;
         bool    failOnWarning  = false;
         string  format         = "text";
-        string? unknownToken   = null;
         string? parseError     = null;
         bool    positionalSeen = false;
 
@@ -117,7 +116,7 @@ public static class CliArgsParser
             Stdout:        stdout,
             FailOnWarning: failOnWarning,
             Format:        format,
-            UnknownToken:  unknownToken,
+            UnknownToken:  null,
             ParseError:    parseError);
     }
 

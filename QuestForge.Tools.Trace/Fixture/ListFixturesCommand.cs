@@ -10,6 +10,10 @@ namespace QuestForge.Tools.Trace.Fixture;
 /// </summary>
 public sealed class ListFixturesCommand
 {
+    // Cached per JsonSerializerOptions guidance — metadata is built once and reused.
+    private static readonly JsonSerializerOptions FixtureReadOptions =
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
     private readonly string _questDataRoot;
 
     public ListFixturesCommand(string questDataRoot)
@@ -25,15 +29,15 @@ public sealed class ListFixturesCommand
         if (!Directory.Exists(dir))
             return [];
 
-        var opts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
         var results = new List<FixtureListEntry>();
 
-        foreach (var file in Directory.GetFiles(dir, "*.json"))
+        // Sorted for deterministic output across filesystems.
+        foreach (var file in Directory.GetFiles(dir, "*.json").OrderBy(f => f, StringComparer.Ordinal))
         {
             try
             {
                 var json = File.ReadAllText(file);
-                var fixture = JsonSerializer.Deserialize<FixtureModel>(json, opts);
+                var fixture = JsonSerializer.Deserialize<FixtureModel>(json, FixtureReadOptions);
                 if (fixture == null) continue;
 
                 var filename = Path.GetFileName(file);
