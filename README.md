@@ -2,7 +2,9 @@
 
 Schema validator and CLI tools for [QuestForge](https://github.com/simplekantan/questforge), a Dalamud plugin for automating FFXIV quest completion.
 
-**License:** MIT
+[![CI](https://github.com/simplekantan/questforge-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/simplekantan/questforge-tools/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![.NET 10](https://img.shields.io/badge/.NET-10-blueviolet)](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ---
 
