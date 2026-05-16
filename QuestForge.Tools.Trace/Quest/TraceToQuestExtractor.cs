@@ -1,12 +1,14 @@
+using System.Text.Json;
 using QuestForge.Adapters.Tracing;
 using QuestForge.Adapters.Types;
 using QuestForge.Engine.Authoring;
+using QuestForge.Schema;
 
 namespace QuestForge.Tools.Trace.Quest;
 
 /// <summary>
 /// Replays a trace event sequence to produce a <see cref="QuestDraftResult"/> containing
-/// a partially-inferred <see cref="Schema.QuestDefinition"/> and a checklist of TODOs for
+/// a partially-inferred <see cref="QuestDefinition"/> and a checklist of TODOs for
 /// the human author.
 /// </summary>
 public sealed class TraceToQuestExtractor
@@ -22,5 +24,329 @@ public sealed class TraceToQuestExtractor
     /// <see cref="RunStartEvent"/> is present.
     /// </summary>
     public Result<QuestDraftResult> Extract(IReadOnlyList<TraceEvent> events)
-        => throw new NotImplementedException();
+    {
+        // Step 1: locate RunStartEvent
+        var runStart = events.OfType<RunStartEvent>().FirstOrDefault();
+        if (runStart == null)
+            return Result.Fail<QuestDraftResult>("no-run-start", "trace contains no run.start event");
+
+        var runId = runStart.RunId;
+        var activeQuest = new QuestId(runStart.QuestId);
+
+        // Step 2: initialise SnapshotState
+        var snapshot = new SnapshotState(activeQuest);
+
+        // Find index of RunStart and first Decision
+        int runStartIdx = -1;
+        for (int i = 0; i < events.Count; i++)
+        {
+            if (events[i] is RunStartEvent rs && rs.RunId == runId)
+            {
+                runStartIdx = i;
+                break;
+            }
+        }
+
+        // Step 3: Pre-roll — apply ObservationEvents between RunStart and first Decision
+        int firstDecisionIdx = -1;
+        for (int i = runStartIdx + 1; i < events.Count; i++)
+        {
+            if (events[i] is DecisionEvent dec && dec.RunId == runId)
+            {
+                firstDecisionIdx = i;
+                break;
+            }
+        }
+
+        int preRollEnd = firstDecisionIdx >= 0 ? firstDecisionIdx : events.Count;
+        for (int i = runStartIdx + 1; i < preRollEnd; i++)
+        {
+            if (events[i] is ObservationEvent obs)
+                snapshot.Apply(obs);
+        }
+
+        // Step 4: index all decisions in order (matching runId)
+        var decisions = new List<(int EventIndex, DecisionEvent Decision)>();
+        for (int i = 0; i < events.Count; i++)
+        {
+            if (events[i] is DecisionEvent dec && dec.RunId == runId)
+                decisions.Add((i, dec));
+        }
+
+        // Find RunEndEvent
+        var runEnd = events.OfType<RunEndEvent>().LastOrDefault(e => e.RunId == runId);
+
+        // Working list of (groupKey, step)
+        var workingList = new List<(int GroupKey, Step Step)>();
+        var todos = new List<string>();
+        var hasAcceptStepWithUnknownPosition = false;
+
+        // Step 5: for each decision
+        for (int i = 0; i < decisions.Count; i++)
+        {
+            var (decisionIdx, decision) = decisions[i];
+
+            // Skip decisions after RunEnd
+            if (runEnd != null && decision.At > runEnd.At) continue;
+
+            // Skip terminal actions
+            var actionTypeLower = decision.ActionType.ToLowerInvariant();
+            if (actionTypeLower == "done" || actionTypeLower == "awaituser" || actionTypeLower == "wait")
+                continue;
+
+            // a. before snapshot
+            var before = snapshot.ToSnapshot(decision.At, activeQuest);
+
+            // b. find first ActionSubmittedEvent after decision with same runId
+            ActionSubmittedEvent? submitted = null;
+            int submittedIdx = -1;
+            for (int j = decisionIdx + 1; j < events.Count; j++)
+            {
+                if (events[j] is ActionSubmittedEvent sub && sub.RunId == runId)
+                {
+                    submitted = sub;
+                    submittedIdx = j;
+                    break;
+                }
+            }
+
+            if (submitted == null)
+            {
+                todos.Add($"decision at seq {before.QuestSequence} had no action.submitted; skipped");
+                continue;
+            }
+
+            // c. find first ActionCompletedEvent after submitted
+            ActionCompletedEvent? completed = null;
+            int completedIdx = -1;
+            for (int j = submittedIdx + 1; j < events.Count; j++)
+            {
+                if (events[j] is ActionCompletedEvent comp && comp.RunId == runId)
+                {
+                    completed = comp;
+                    completedIdx = j;
+                    break;
+                }
+            }
+
+            // d. If Interact, record the NPC interaction BEFORE advance
+            var submittedTypeLower = submitted.ActionType.ToLowerInvariant();
+            if (submittedTypeLower == "interact" && submitted.Parameters.HasValue)
+            {
+                uint npcId = 0;
+                var p = submitted.Parameters.Value;
+                if (p.TryGetProperty("target", out var tgt))
+                    { try { npcId = tgt.GetUInt32(); } catch { } }
+                else if (p.TryGetProperty("value", out var val))
+                    { try { npcId = val.GetUInt32(); } catch { } }
+
+                if (npcId != 0)
+                    snapshot.RecordInteract(new NpcId(npcId));
+            }
+
+            // e. Advance snapshot: apply ObservationEvents between completed (exclusive) and next decision (exclusive)
+            int advanceStart = completedIdx >= 0 ? completedIdx + 1 : (submittedIdx + 1);
+            int advanceEnd = (i + 1 < decisions.Count) ? decisions[i + 1].EventIndex : events.Count;
+            for (int j = advanceStart; j < advanceEnd; j++)
+            {
+                if (events[j] is ObservationEvent obs)
+                    snapshot.Apply(obs);
+            }
+
+            // f. afterAt
+            DateTimeOffset afterAt;
+            if (i + 1 < decisions.Count)
+                afterAt = decisions[i + 1].Decision.At;
+            else if (runEnd != null)
+                afterAt = runEnd.At;
+            else if (completed != null)
+                afterAt = completed.At;
+            else
+                afterAt = decision.At;
+
+            // g. after snapshot
+            var after = snapshot.ToSnapshot(afterAt, activeQuest);
+
+            // h. inference
+            var inference = _inference.Infer(before, after);
+
+            // i. Build step
+            var stepId = !string.IsNullOrEmpty(inference.SuggestedStepId)
+                ? inference.SuggestedStepId
+                : $"step-{i}";
+
+            Step? step = null;
+
+            if (submittedTypeLower == "navigate")
+            {
+                // Parse destination
+                float x = 0f, y = 0f, z = 0f;
+                int zone = 0;
+
+                if (submitted.Parameters.HasValue)
+                {
+                    var p = submitted.Parameters.Value;
+                    if (p.TryGetProperty("destination", out var dest))
+                    {
+                        try { x = dest.TryGetProperty("x", out var xp) ? xp.GetSingle() : 0f; } catch { }
+                        try { y = dest.TryGetProperty("y", out var yp) ? yp.GetSingle() : 0f; } catch { }
+                        try { z = dest.TryGetProperty("z", out var zp) ? zp.GetSingle() : 0f; } catch { }
+                    }
+                    else
+                    {
+                        // Fallback: top-level x/y/z
+                        try { x = p.TryGetProperty("x", out var xp) ? xp.GetSingle() : 0f; } catch { }
+                        try { y = p.TryGetProperty("y", out var yp) ? yp.GetSingle() : 0f; } catch { }
+                        try { z = p.TryGetProperty("z", out var zp) ? zp.GetSingle() : 0f; } catch { }
+                    }
+
+                    if (p.TryGetProperty("zone", out var zoneEl))
+                    {
+                        try { zone = zoneEl.GetInt32(); } catch { }
+                    }
+                }
+
+                float? stopDist = null;
+                if (submitted.Parameters.HasValue)
+                {
+                    var p = submitted.Parameters.Value;
+                    if (p.TryGetProperty("options", out var opts) && opts.TryGetProperty("stoppingDistance", out var sd))
+                        try { stopDist = sd.GetSingle(); } catch { }
+                }
+
+                ExpectValue? expect = null;
+                if (!string.IsNullOrEmpty(inference.SuggestedExpect))
+                    expect = new PredicateExpect { Predicate = inference.SuggestedExpect };
+
+                step = new TravelStep
+                {
+                    Id = stepId,
+                    Destination = new TravelDestination(zone, new Position3(x, y, z)),
+                    Expect = expect,
+                    StopDistance = stopDist
+                };
+            }
+            else if (submittedTypeLower == "interact")
+            {
+                // Parse NPC ID
+                uint npcId = 0;
+                if (submitted.Parameters.HasValue)
+                {
+                    var p = submitted.Parameters.Value;
+                    if (p.TryGetProperty("target", out var tgt))
+                        try { npcId = tgt.GetUInt32(); } catch { }
+                    else if (p.TryGetProperty("value", out var val))
+                        try { npcId = val.GetUInt32(); } catch { }
+                }
+
+                var npcZone = (int)(before.Zone.Value);
+                var npcLocation = new NpcLocation(npcId, npcZone, new Position3(0, 0, 0));
+
+                ExpectValue? expect = null;
+                if (!string.IsNullOrEmpty(inference.SuggestedExpect))
+                    expect = new PredicateExpect { Predicate = inference.SuggestedExpect };
+
+                if (inference.InferredFrom == InferredFrom.QuestAccepted)
+                {
+                    step = new AcceptStep
+                    {
+                        Id = stepId,
+                        Target = npcLocation,
+                        Expect = expect
+                    };
+                    if (npcLocation.Position is { X: 0, Y: 0, Z: 0 })
+                        hasAcceptStepWithUnknownPosition = true;
+                }
+                else if (inference.InferredFrom == InferredFrom.QuestCompleted)
+                {
+                    step = new TurnInStep
+                    {
+                        Id = stepId,
+                        Target = npcLocation,
+                        Expect = expect
+                    };
+                }
+                else
+                {
+                    step = new TalkStep
+                    {
+                        Id = stepId,
+                        Target = npcLocation,
+                        Expect = expect
+                    };
+                }
+            }
+            else
+            {
+                // Generic step — best effort
+                todos.Add($"unrecognised action type '{submitted.ActionType}' at step {stepId}; manual edit required");
+                // Skip emitting a step for unknown types
+                continue;
+            }
+
+            // j. groupKey = before.QuestSequence
+            var groupKey = before.QuestSequence;
+            workingList.Add((groupKey, step));
+        }
+
+        // Step 6: Group by groupKey preserving order
+        var sequences = new List<QuestSequence>();
+        if (workingList.Count > 0)
+        {
+            var currentKey = workingList[0].GroupKey;
+            var currentSteps = new List<Step>();
+
+            foreach (var (key, s) in workingList)
+            {
+                if (key != currentKey)
+                {
+                    sequences.Add(new QuestSequence { Sequence = currentKey, Steps = currentSteps.ToArray() });
+                    currentKey = key;
+                    currentSteps = [];
+                }
+                currentSteps.Add(s);
+            }
+            sequences.Add(new QuestSequence { Sequence = currentKey, Steps = currentSteps.ToArray() });
+        }
+
+        // Step 7: assemble QuestDefinition
+        // Find AcceptFrom from first AcceptStep
+        NpcLocation? acceptFrom = null;
+        foreach (var (_, s) in workingList)
+        {
+            if (s is AcceptStep acceptStep)
+            {
+                acceptFrom = acceptStep.Target;
+                break;
+            }
+        }
+        acceptFrom ??= new NpcLocation(0u, 0, new Position3(0, 0, 0));
+
+        // Step 8: collect TODOs
+        todos.Insert(0, "name (Lumina lookup required)");
+        todos.Insert(1, "expansion");
+        todos.Insert(2, "category");
+        todos.Insert(3, "lastVerifiedPatch");
+        todos.Insert(4, "requirements (level, job, prereqs)");
+
+        if (hasAcceptStepWithUnknownPosition)
+            todos.Add("acceptFrom NPC position");
+
+        var definition = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = runStart.QuestId,
+            Name              = "TODO",
+            Expansion         = "TODO",
+            Category          = "TODO",
+            Enabled           = true,
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "TODO",
+            Requirements      = new Requirements(),
+            AcceptFrom        = acceptFrom,
+            Sequences         = sequences.ToArray()
+        };
+
+        return Result.Ok(new QuestDraftResult(definition, todos));
+    }
 }
