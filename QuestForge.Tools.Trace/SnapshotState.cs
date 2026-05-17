@@ -95,10 +95,21 @@ public sealed class SnapshotState
     private bool QuestArgMatches(ObservationEvent ev)
     {
         if (!ev.Argument.HasValue) return false;
-        if (ev.Argument.Value.TryGetProperty("value", out var v))
+        var arg = ev.Argument.Value;
+
+        // Old traces may have written the quest ID as a plain JSON number (e.g. 66104)
+        // instead of an object ({"value": 66104}). Handle both forms.
+        if (arg.ValueKind == JsonValueKind.Number)
+        {
+            try { return arg.GetUInt32() == _activeQuest.Value; } catch { return false; }
+        }
+
+        if (arg.ValueKind == JsonValueKind.Object &&
+            arg.TryGetProperty("value", out var v))
         {
             try { return v.GetUInt32() == _activeQuest.Value; } catch { return false; }
         }
+
         return false;
     }
 

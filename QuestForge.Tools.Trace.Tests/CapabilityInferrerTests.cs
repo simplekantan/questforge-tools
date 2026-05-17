@@ -530,4 +530,68 @@ public sealed class CapabilityInferrerTests
         // Assert
         Assert.Equal(1, caps.Count(c => c == "step:travel"));
     }
+
+    // =========================================================================
+    // B8 — CutsceneStep capability inference
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithCutsceneStep_EmitsStepCutscene()
+    {
+        /*
+         * CONTRACT: Given a QuestDefinition containing one CutsceneStep with an Expect
+         *             predicate of "questSequence(12345) >= 1",
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result contains "step:cutscene"
+         *                AND the result contains "predicate:questSequence"
+         *                (because the Expect predicate uses the questSequence function).
+         *
+         * This test is expected to PASS immediately:
+         *   [typeof(CutsceneStep)] = "step:cutscene" already exists in CapabilityInferrer.cs line 21.
+         *   The questSequence predicate extractor is also already present.
+         *   The test is authored here to lock the behavior against future regressions.
+         *
+         * BUILDER GUIDANCE (if it fails): Verify that StepCapabilities contains
+         *   [typeof(CutsceneStep)] = "step:cutscene" and that WalkExpect correctly
+         *   extracts the function name from "questSequence(12345) >= 1" as "questSequence".
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 12345u,
+            Name              = "Cutscene Capability Test",
+            Expansion         = "arr",
+            Category          = "msq",
+            Enabled           = true,
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements { MinLevel = 1, Prereqs = [] },
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new CutsceneStep
+                        {
+                            Id     = "watch-intro",
+                            Skip   = "ifAllowed",
+                            Expect = new PredicateExpect { Predicate = "questSequence(12345) >= 1" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:cutscene", caps);
+        Assert.Contains("predicate:questSequence", caps);
+    }
 }

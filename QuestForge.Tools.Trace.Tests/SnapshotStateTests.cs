@@ -245,4 +245,57 @@ public sealed class SnapshotStateTests
         Assert.True(recognised, "Recognised method should return true even for failure-shaped values.");
         Assert.Equal(new ZoneId(0u), state.Zone);
     }
+
+    // -------------------------------------------------------------------------
+    // Regression: QuestArgMatches must not crash when argument is a plain number
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Apply_GetQuestSequence_PlainNumberArg_MatchesActiveQuest()
+    {
+        /*
+         * REGRESSION: Old authoring traces wrote the quest ID as a plain JSON number
+         * (e.g. 66130) instead of an object ({"value": 66130}).
+         * QuestArgMatches must not throw InvalidOperationException in that case.
+         *
+         * CONTRACT: Given SnapshotState(quest=66130),
+         *           When  Apply is called with GetQuestSequence whose argument is the
+         *                 plain number 66130 (not an object),
+         *           Then  QuestSequence is updated and Apply returns true.
+         */
+
+        // Arrange
+        var state = new SnapshotState(ActiveQuest);
+        // Build a plain-number argument (not wrapped in {"value": ...})
+        var plainNumberArg = System.Text.Json.JsonSerializer.SerializeToElement(66130u);
+        var ev = Obs("GetQuestSequence", argument: plainNumberArg, value: IntValue(7));
+
+        // Act
+        var recognised = state.Apply(ev);
+
+        // Assert
+        Assert.True(recognised);
+        Assert.Equal(7, state.QuestSequence);
+    }
+
+    [Fact]
+    public void Apply_GetQuestSequence_PlainNumberArg_WrongId_DoesNotMutate()
+    {
+        /*
+         * REGRESSION: Plain-number argument whose value does not match the active quest
+         * must be silently ignored (not crash, not mutate).
+         */
+
+        // Arrange
+        var state = new SnapshotState(ActiveQuest);
+        var plainNumberArg = System.Text.Json.JsonSerializer.SerializeToElement(99999u);
+        var ev = Obs("GetQuestSequence", argument: plainNumberArg, value: IntValue(42));
+
+        // Act
+        var recognised = state.Apply(ev);
+
+        // Assert
+        Assert.True(recognised, "Method is still recognised even when quest-ID filter prevents mutation.");
+        Assert.Equal(0, state.QuestSequence);
+    }
 }

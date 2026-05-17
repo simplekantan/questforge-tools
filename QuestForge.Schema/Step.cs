@@ -29,6 +29,8 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(AwaitUserStep),         "await-user")]
 [JsonDerivedType(typeof(BranchStep),            "branch")]
 [JsonDerivedType(typeof(FragmentStep),          "fragment")]
+[JsonDerivedType(typeof(AttunementStep),        "attune")]
+[JsonDerivedType(typeof(HandOverItemStep),      "hand-over-item")]
 public class Step
 {
     public string Id { get; init; } = default!;
@@ -161,4 +163,25 @@ public class FragmentStep : Step
 {
     public string Ref { get; init; } = default!;
     public Dictionary<string, JsonElement>? Params { get; init; }
+}
+
+public class AttunementStep : Step
+{
+    /// <summary>The aetheryte or aethernet shard to attune to.</summary>
+    public AetheryteId Target { get; init; }
+
+    /// <summary>
+    /// Optional world-space position of the aetheryte or shard.
+    /// When present, the engine uses implied navigation (same as talk/accept/turn-in):
+    /// if the player is beyond StopDistance, it emits Navigate first.
+    /// When absent, the engine emits Interact directly — author a preceding TravelStep
+    /// to ensure the player is close enough.
+    /// </summary>
+    public NpcLocation? Location { get; init; }
+}
+
+public class HandOverItemStep : Step
+{
+    public NpcLocation Target { get; init; } = default!;
+    public uint[] Items { get; init; } = [];
 }
