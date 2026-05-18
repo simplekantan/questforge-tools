@@ -386,18 +386,22 @@ public sealed class TraceToQuestExtractor
             }
             else if (submittedTypeLower == TraceConstants.ActionUseAethernet)
             {
-                // Parse shard ID from parameters.destinationShardId or parameters.shardId
-                uint shardId = 0;
+                // Parse destination shard ID from parameters.destinationShardId or parameters.shardId
+                uint destShardId = 0;
+                uint sourceShardId = 0;
                 if (submitted.Parameters.HasValue)
                 {
                     var p = submitted.Parameters.Value;
                     if (p.TryGetProperty("destinationShardId", out var sid))
-                        try { shardId = sid.GetUInt32(); } catch { }
+                        try { destShardId = sid.GetUInt32(); } catch { }
                     else if (p.TryGetProperty("shardId", out var sid2))
-                        try { shardId = sid2.GetUInt32(); } catch { }
+                        try { destShardId = sid2.GetUInt32(); } catch { }
+
+                    if (p.TryGetProperty("sourceShardId", out var srcEl))
+                        try { sourceShardId = srcEl.GetUInt32(); } catch { }
                 }
 
-                if (shardId == 0)
+                if (destShardId == 0)
                     todos.Add($"TODO: unknown aethernet destination shard at step {stepId} — fill in destinationShardId manually");
 
                 // Destination zone from after snapshot
@@ -407,11 +411,17 @@ public sealed class TraceToQuestExtractor
                 if (!string.IsNullOrEmpty(inference.SuggestedExpect))
                     expect = new PredicateExpect { Predicate = inference.SuggestedExpect };
 
+                var aethernet = destShardId > 0
+                    ? new AethernetRouteHint(
+                        From: sourceShardId == 0 ? null : sourceShardId,
+                        To: destShardId)
+                    : null;
+
                 step = new TravelStep
                 {
                     Id = stepId,
                     Destination = new TravelDestination(destZone, null),
-                    RouteHint = new RouteHint(Aethernet: shardId > 0 ? new uint[] { shardId } : null),
+                    RouteHint = new RouteHint(Aethernet: aethernet),
                     Expect = expect
                 };
             }

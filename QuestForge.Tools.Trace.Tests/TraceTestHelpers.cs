@@ -143,6 +143,17 @@ internal static class TraceTestHelpers
         => JsonSerializer.SerializeToElement(new { destinationShardId });
 
     /// <summary>
+    /// Builds the Parameters JsonElement for a UseAethernet action with both source and
+    /// destination shard IDs (Issue #25 — new sourceShardId field).
+    /// Shape: {"sourceShardId": sourceShardId, "destinationShardId": destinationShardId}
+    ///
+    /// RED PHASE: This helper is referenced by tests 35, 37, 39 which will fail until
+    /// Builder adds it AND updates TraceToQuestExtractor to read sourceShardId.
+    /// </summary>
+    internal static JsonElement UseAethernetParamsWithSource(uint sourceShardId, uint destinationShardId)
+        => JsonSerializer.SerializeToElement(new { sourceShardId, destinationShardId });
+
+    /// <summary>
     /// Builds a JsonElement representing an item-count adapter argument.
     /// Shape: {"value": itemId}
     /// </summary>

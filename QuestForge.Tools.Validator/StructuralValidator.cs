@@ -27,6 +27,7 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         ValidateFragmentRules(quest, ctx, errors);
         ValidateStepTypeRules(quest, ctx, errors);
         ValidateNotesLength(quest, ctx, errors);
+        ValidateRouteHints(quest, ctx, errors);
 
         return errors;
     }
@@ -553,6 +554,44 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                 {
                     var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
                     CheckNotesLength(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // RouteHint validation
+    // -------------------------------------------------------------------------
+
+    private static void ValidateRouteHints(
+        QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var seq in quest.Sequences)
+            CheckRouteHints(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
+    }
+
+    private static void CheckRouteHints(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step is TravelStep travel && travel.RouteHint?.Aethernet is { } aethernet)
+            {
+                if (aethernet.To == 0)
+                    errors.Add(E(ctx, "structural/route-hint-aethernet-to-missing", scope.ToString(),
+                        $"Step '{step.Id}': RouteHint.Aethernet.To must be non-zero (the destination shard ID is required).",
+                        stepId: step.Id, severity: Severity.Error));
+
+                if (aethernet.From == null)
+                    errors.Add(E(ctx, "structural/route-hint-aethernet-from-missing", scope.ToString(),
+                        $"Step '{step.Id}': RouteHint.Aethernet.From is not set (source shard ID recommended for full route hint).",
+                        stepId: step.Id, severity: Severity.Warning));
+            }
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckRouteHints(branch.Branches[i].Steps ?? [], inner, ctx, errors);
                 }
         }
     }
