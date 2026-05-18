@@ -1,3 +1,4 @@
+using QuestForge.Adapters.Tracing;
 using QuestForge.Adapters.Types;
 using QuestForge.Schema;
 using QuestForge.Tools.Trace.Parsing;
@@ -402,6 +403,716 @@ public sealed class TraceToQuestExtractorTests
         // Assert
         var failure = Assert.IsType<Result<QuestDraftResult>.Failure>(result);
         Assert.Equal("no-run-start", failure.Reason);
+    }
+
+    // =========================================================================
+    // Tests 22–34: parity improvement tests (RED phase)
+    // =========================================================================
+
+    // -------------------------------------------------------------------------
+    // Test 22 — Navigate then Interact: NPC position comes from navigate destination
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_NavigateThenInteract_NpcPositionFromNavigateDestination()
+    {
+        /*
+         * RED: Will fail until Builder calls snapshot.RecordNavigateDestination during
+         * Navigate action processing and uses LastNpcPosition for subsequent TalkStep.
+         *
+         * CONTRACT: Given a trace with Navigate to (10, 0, 20) then Interact with NPC 9999,
+         *           When  Extract,
+         *           Then  the TalkStep produced for the Interact has
+         *                 Target.Position == Position3(10, 0, 20)
+         *                 (NOT the default zero position).
+         *
+         * BUILDER GUIDANCE:
+         *   - In the Navigate branch, call snapshot.RecordNavigateDestination(new WorldPosition(x,y,z)).
+         *   - In the Interact branch, read snapshot.LastNpcPosition for Target.Position.
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "navigate", offsetSeconds: 1),
+            Submitted("Navigate", NavParams(10f, 0f, 20f, zone: 182), offsetSeconds: 1.5),
+            Completed("Navigate", "Arrived", offsetSeconds: 2),
+            Decision(null, "interact", offsetSeconds: 2.1),
+            Submitted("Interact", InteractParams(9999u), offsetSeconds: 2.6),
+            Completed("Interact", "ok", offsetSeconds: 3),
+            Decision(null, "done", offsetSeconds: 4),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var talkStep = allSteps.OfType<TalkStep>().FirstOrDefault();
+        Assert.NotNull(talkStep);
+        Assert.NotNull(talkStep!.Target);
+        Assert.Equal(10f, talkStep.Target!.Position.X, precision: 2);
+        Assert.Equal(0f,  talkStep.Target.Position.Y,  precision: 2);
+        Assert.Equal(20f, talkStep.Target.Position.Z,  precision: 2);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 23 — HandOver action produces HandOverItemStep with items from parameters
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_HandOverAction_ProducesHandOverItemStep_ItemsFromParameters()
+    {
+        /*
+         * RED: Will fail until Builder adds "handover" action type handling to
+         * TraceToQuestExtractor, producing HandOverItemStep.
+         *
+         * CONTRACT: Given a trace with Decision("hand-over") and ActionSubmitted("HandOver",
+         *           parameters={"target":1234, "items":[501, 502]}),
+         *           When  Extract,
+         *           Then  the produced step is HandOverItemStep with
+         *                 Items == [501u, 502u] and Target.NpcId == 1234u.
+         *
+         * BUILDER GUIDANCE:
+         *   - Add "handover" (case-insensitive) to the action type switch.
+         *   - Parse parameters.items (uint[]) for HandOverItemStep.Items.
+         *   - Parse parameters.target (uint) for the NPC ID.
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "handover", offsetSeconds: 1),
+            Submitted("HandOver", HandOverParams(1234u, 501u, 502u), offsetSeconds: 1.5),
+            Completed("HandOver", "ok", offsetSeconds: 2),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var handOver = allSteps.OfType<HandOverItemStep>().FirstOrDefault();
+        Assert.NotNull(handOver);
+        Assert.Equal(1234u, handOver!.Target.NpcId);
+        Assert.Contains(501u, handOver.Items);
+        Assert.Contains(502u, handOver.Items);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 24 — HandOver with no items in params falls back to InventoryChanged
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_HandOverAction_ItemsFromInventoryChangedEvent_WhenParamsLackItems()
+    {
+        /*
+         * RED: Will fail until Builder extracts item IDs from InventoryChangedEvent
+         * when HandOver parameters.items is absent/empty.
+         *
+         * CONTRACT: Given a trace with HandOver parameters that have no "items" field,
+         *           but an InventoryChangedEvent emitted between Completed and next Decision
+         *           shows Lost=[{ItemId:999, Qty:1}],
+         *           When  Extract,
+         *           Then  HandOverItemStep.Items == [999u].
+         *
+         * BUILDER GUIDANCE:
+         *   - During the advance-snapshot phase (between Completed and next Decision),
+         *     also collect any InventoryChangedEvents.
+         *   - If parameters.items is absent/empty, fall back to Lost items from
+         *     the collected InventoryChangedEvents.
+         */
+
+        // Arrange — parameters have no "items" array
+        var noItemsParams = System.Text.Json.JsonSerializer.SerializeToElement(new { target = 1234u });
+
+        var opts = TraceEventJsonContext.Default.Options;
+        var inventoryLine = System.Text.Json.JsonSerializer.Serialize<TraceEvent>(
+            InventoryChanged(
+                gained:        [],
+                lost:          [(999u, 1)],
+                newHash:       7u,
+                runId:         "aaa",
+                offsetSeconds: 2.5),
+            opts);
+
+        var traceParts = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "handover", offsetSeconds: 1),
+            Submitted("HandOver", noItemsParams, offsetSeconds: 1.5),
+            Completed("HandOver", "ok", offsetSeconds: 2));
+
+        var jsonl = traceParts + "\n" + inventoryLine + "\n" + MakeTrace(
+            Decision(null, "done", offsetSeconds: 3),
+            End("done"));
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var handOver = allSteps.OfType<HandOverItemStep>().FirstOrDefault();
+        Assert.NotNull(handOver);
+        Assert.Contains(999u, handOver!.Items);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 25 — HandOver with no items anywhere emits step with empty Items and TODO
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_HandOverAction_NoItemsAnywhere_EmitsStepWithEmptyItemsAndTodo()
+    {
+        /*
+         * RED: Will fail until Builder handles the no-items fallback gracefully.
+         *
+         * CONTRACT: Given a trace with HandOver but no items in parameters and no
+         *           InventoryChangedEvent,
+         *           When  Extract,
+         *           Then  the HandOverItemStep is still produced (not skipped),
+         *                 Items is empty [],
+         *                 AND Todos contains a string mentioning "items" for the step.
+         *
+         * BUILDER GUIDANCE:
+         *   - Never skip an action that was successfully submitted; always emit a step.
+         *   - When items cannot be inferred, emit Items = [] and record a TODO.
+         */
+
+        // Arrange — no items in params, no InventoryChanged events
+        var noItemsParams = System.Text.Json.JsonSerializer.SerializeToElement(new { target = 5678u });
+
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "handover", offsetSeconds: 1),
+            Submitted("HandOver", noItemsParams, offsetSeconds: 1.5),
+            Completed("HandOver", "ok", offsetSeconds: 2),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var handOver = allSteps.OfType<HandOverItemStep>().FirstOrDefault();
+        Assert.NotNull(handOver);
+        Assert.Empty(handOver!.Items);
+
+        // A TODO about items must be recorded
+        Assert.Contains(draft.Todos,
+            t => t.Contains("item", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 26 — HandOver NPC position comes from preceding Navigate
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_HandOverAction_TargetNpcPositionFromPreviousNavigate()
+    {
+        /*
+         * RED: Will fail until Builder propagates RecordNavigateDestination to HandOver.
+         *
+         * CONTRACT: Given Navigate to (5, 0, 10) then HandOver to NPC 1234,
+         *           When  Extract,
+         *           Then  HandOverItemStep.Target.Position == Position3(5, 0, 10).
+         *
+         * BUILDER GUIDANCE:
+         *   - Same pattern as TalkStep: read snapshot.LastNpcPosition in the handover branch.
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "navigate", offsetSeconds: 1),
+            Submitted("Navigate", NavParams(5f, 0f, 10f, zone: 182), offsetSeconds: 1.5),
+            Completed("Navigate", "Arrived", offsetSeconds: 2),
+            Decision(null, "handover", offsetSeconds: 2.1),
+            Submitted("HandOver", HandOverParams(1234u, 801u), offsetSeconds: 2.6),
+            Completed("HandOver", "ok", offsetSeconds: 3),
+            Decision(null, "done", offsetSeconds: 4),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var handOver = draft.Definition.Sequences
+            .SelectMany(s => s.Steps)
+            .OfType<HandOverItemStep>()
+            .FirstOrDefault();
+        Assert.NotNull(handOver);
+        Assert.Equal(5f,  handOver!.Target.Position.X, precision: 2);
+        Assert.Equal(0f,  handOver.Target.Position.Y,  precision: 2);
+        Assert.Equal(10f, handOver.Target.Position.Z,  precision: 2);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 27 — UseAethernet action produces TravelStep with RouteHint.Aethernet
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetAction_ProducesTravelStep_WithRouteHintAethernet()
+    {
+        /*
+         * RED: Will fail until Builder adds "useaethernet" action type handling.
+         *
+         * CONTRACT: Given a trace with Decision("useaethernet") and ActionSubmitted
+         *           ("UseAethernet", {"destinationShardId": 77}),
+         *           and a zone change after (GetPlayerZone=201),
+         *           When  Extract,
+         *           Then  the produced step is TravelStep with
+         *                 Destination.Zone == 201 AND RouteHint.Aethernet == [77u].
+         *
+         * BUILDER GUIDANCE:
+         *   - Add "useaethernet" (case-insensitive) to the action switch.
+         *   - Parse parameters.destinationShardId (uint).
+         *   - Destination.Zone from after.Zone (zone observed after completion).
+         *   - RouteHint = new RouteHint(Aethernet: [destinationShardId]).
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", UseAethernetParams(77u), offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(201u), offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var travel = allSteps.OfType<TravelStep>().LastOrDefault();
+        Assert.NotNull(travel);
+        Assert.Equal(201, travel!.Destination.Zone);
+        Assert.NotNull(travel.RouteHint);
+        Assert.NotNull(travel.RouteHint!.Aethernet);
+        Assert.Contains(77u, travel.RouteHint.Aethernet!);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 28 — UseAethernet with unknown shard still produces TravelStep with TODO
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetAction_UnknownShardId_TravelStep_WithTodo()
+    {
+        /*
+         * RED: Will fail until Builder handles missing destinationShardId gracefully.
+         *
+         * CONTRACT: Given a UseAethernet action where parameters.destinationShardId is 0
+         *           or absent, and the zone does not change after the action,
+         *           When  Extract,
+         *           Then  a TravelStep is still produced AND Todos contains a string
+         *                 mentioning "aethernet" (case-insensitive).
+         *
+         * BUILDER GUIDANCE:
+         *   - When destinationShardId == 0 or missing, emit TravelStep with
+         *     RouteHint = new RouteHint(Aethernet: []) or null.
+         *   - Record a TODO about the unknown aethernet destination.
+         */
+
+        // Arrange — parameters with destinationShardId=0 (sentinel for unknown)
+        var unknownParams = System.Text.Json.JsonSerializer.SerializeToElement(
+            new { destinationShardId = 0u });
+
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", unknownParams, offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            // No zone change — shard stayed in same zone
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        Assert.Contains(allSteps, s => s is TravelStep);
+        Assert.Contains(draft.Todos,
+            t => t.Contains("aethernet", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 29 (B22) — Interact on aetheryte WITH AethernetShardTargeted → AttunementStep
+    //                 (unified trace — authoring mode observation IS present)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_InteractOnAetheryte_WithAethernetShardTargeted_ProducesAttunementStep()
+    {
+        /*
+         * RED: Will fail until Builder handles the attunement inference path in extractor.
+         *
+         * B22 — UNIFIED TRACE CASE: The AethernetShardTargeted observation fires in
+         * authoring/unified traces via AuthoringHost.PollTargetNpc. This IS present here.
+         *
+         * CONTRACT: Given a trace where:
+         *           1. AethernetShardTargeted(shardId=8) fires before the Interact,
+         *           2. Interact(target=8) is submitted,
+         *           3. IsAetheryteAttuned(8, value=1) fires after Completed,
+         *           When  Extract,
+         *           Then  the produced step is AttunementStep with Target.Value == 8u
+         *                 (not a TalkStep).
+         *
+         * BUILDER GUIDANCE:
+         *   - In the Interact branch, after advance: check if inference.InferredFrom ==
+         *     InferredFrom.AttunementChange → emit AttunementStep instead of TalkStep.
+         *   - SnapshotState must forward AethernetShardTargeted and IsAetheryteAttuned
+         *     to GameStateSnapshot.LastAethernetShardInteracted and .LastAttuned so that
+         *     StepInferenceEngine.Rule2.5 fires correctly.
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            // Authoring: aethernet shard targeted before interact
+            ObsAethernetShardTargeted(shardId: 8u, offsetSeconds: 0.4),
+            Decision(null, "interact", offsetSeconds: 1),
+            Submitted("Interact", InteractParams(8u), offsetSeconds: 1.5),
+            Completed("Interact", "ok", offsetSeconds: 2),
+            // After interact: attuned = 1
+            ObsIsAetheryteAttuned(aetheryteId: 8u, value: 1, offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var attune = allSteps.OfType<AttunementStep>().FirstOrDefault();
+        Assert.NotNull(attune);
+        Assert.Equal(8u, attune!.Target.Value);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 30 (B23) — Interact on aetheryte WITHOUT AethernetShardTargeted → fallback
+    //                 (pure engine-run trace — authoring observation NOT present)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_InteractOnAetheryte_WithoutAethernetShardTargeted_FallbackAttunement()
+    {
+        /*
+         * RED: Will fail until Builder handles the attunement fallback in extractor.
+         *
+         * B23 — PURE ENGINE-RUN TRACE: AethernetShardTargeted does NOT fire (it is an
+         * authoring-only observation from AuthoringHost.PollTargetNpc). Instead, only
+         * IsAetheryteAttuned transitions from 0 to 1 after the Interact.
+         *
+         * CONTRACT: Given a trace where:
+         *           1. No AethernetShardTargeted event,
+         *           2. IsAetheryteAttuned(8, value=0) before the Interact,
+         *           3. Interact(target=8) submitted,
+         *           4. IsAetheryteAttuned(8, value=1) fires after Completed,
+         *           When  Extract,
+         *           Then  the produced step is AttunementStep with Target.Value == 8u.
+         *
+         * BUILDER GUIDANCE:
+         *   - When AethernetShardTargeted is absent, detect the attunement via:
+         *     before.LastAttuned != after.LastAttuned, derive the aetheryte ID from
+         *     after.LastAttuned (newly set by IsAetheryteAttuned=1 in the after window).
+         *   - StepInferenceEngine.Rule2.5 requires LastAethernetShardInteracted — the
+         *     extractor must synthesize it from the Interact target NPC ID when the
+         *     observation is absent but IsAetheryteAttuned changes.
+         */
+
+        // Arrange — no AethernetShardTargeted observation
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            // Not attuned yet (before)
+            ObsIsAetheryteAttuned(aetheryteId: 8u, value: 0, offsetSeconds: 0.3),
+            Decision(null, "interact", offsetSeconds: 1),
+            Submitted("Interact", InteractParams(8u), offsetSeconds: 1.5),
+            Completed("Interact", "ok", offsetSeconds: 2),
+            // Attuned after (IsAetheryteAttuned=1)
+            ObsIsAetheryteAttuned(aetheryteId: 8u, value: 1, offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var attune = allSteps.OfType<AttunementStep>().FirstOrDefault();
+        Assert.NotNull(attune);
+        Assert.Equal(8u, attune!.Target.Value);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 31 — AttunementStep location comes from preceding Navigate
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_AttunementStep_LocationFromPreviousNavigate()
+    {
+        /*
+         * RED: Will fail until Builder propagates RecordNavigateDestination to AttunementStep.
+         *
+         * CONTRACT: Given Navigate to (100, 0, 200) then Interact on aetheryte 8
+         *           (with AethernetShardTargeted + IsAetheryteAttuned=1 after),
+         *           When  Extract,
+         *           Then  AttunementStep.Location.Position == Position3(100, 0, 200).
+         *
+         * BUILDER GUIDANCE:
+         *   - In the AttunementStep construction branch, read snapshot.LastNpcPosition
+         *     for Location.Position (same pattern as TalkStep/HandOverItemStep).
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "navigate", offsetSeconds: 1),
+            Submitted("Navigate", NavParams(100f, 0f, 200f, zone: 182), offsetSeconds: 1.5),
+            Completed("Navigate", "Arrived", offsetSeconds: 2),
+            ObsAethernetShardTargeted(shardId: 8u, offsetSeconds: 2.1),
+            Decision(null, "interact", offsetSeconds: 2.2),
+            Submitted("Interact", InteractParams(8u), offsetSeconds: 2.7),
+            Completed("Interact", "ok", offsetSeconds: 3),
+            ObsIsAetheryteAttuned(aetheryteId: 8u, value: 1, offsetSeconds: 3.5),
+            Decision(null, "done", offsetSeconds: 4),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var attune = draft.Definition.Sequences
+            .SelectMany(s => s.Steps)
+            .OfType<AttunementStep>()
+            .FirstOrDefault();
+        Assert.NotNull(attune);
+        Assert.NotNull(attune!.Location);
+        Assert.Equal(100f, attune.Location!.Position.X, precision: 2);
+        Assert.Equal(0f,   attune.Location.Position.Y,  precision: 2);
+        Assert.Equal(200f, attune.Location.Position.Z,  precision: 2);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 32 — HandOver action type is case-insensitive ("HandOver", "HANDOVER")
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_HandOverActionType_CaseInsensitive()
+    {
+        /*
+         * RED: Will fail until Builder uses ToLowerInvariant() on the submitted action type.
+         *
+         * CONTRACT: Given a trace where ActionSubmitted has ActionType == "HANDOVER"
+         *           (uppercase), When  Extract,
+         *           Then  a HandOverItemStep is produced.
+         *
+         * BUILDER GUIDANCE:
+         *   - Normalize via submittedTypeLower = submitted.ActionType.ToLowerInvariant()
+         *     before the switch/if-chain. This is already done for navigate/interact.
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "handover", offsetSeconds: 1),
+            Submitted("HANDOVER", HandOverParams(1111u, 601u), offsetSeconds: 1.5),
+            Completed("HANDOVER", "ok", offsetSeconds: 2),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        Assert.Contains(allSteps, s => s is HandOverItemStep);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 33 — UseAethernet action type is case-insensitive
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetActionType_CaseInsensitive()
+    {
+        /*
+         * RED: Will fail until Builder uses ToLowerInvariant() on the submitted type.
+         *
+         * CONTRACT: Given ActionSubmitted has ActionType == "UseAethernet" (mixed case),
+         *           When  Extract,
+         *           Then  a TravelStep (with aethernet route hint or base zone travel)
+         *                 is produced — not skipped as an unrecognised type.
+         *
+         * BUILDER GUIDANCE:
+         *   - "useaethernet".Equals(submittedTypeLower) catches all casings.
+         */
+
+        // Arrange
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", UseAethernetParams(55u), offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(130u), offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        Assert.Contains(allSteps, s => s is TravelStep);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 34 — Key item deltas from one decision do not leak into the next
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_TwoDecisions_KeyItemDeltasDoNotLeakBetween()
+    {
+        /*
+         * RED: Will fail until Builder calls snapshot.ResetPendingKeyItemDeltas
+         * between decisions.
+         *
+         * CONTRACT: Given two sequential decisions D1 (talk, gains item 101) and
+         *           D2 (talk, no inventory change):
+         *           When  Extract,
+         *           Then  the step for D2 does NOT have KeyItemsAdded containing 101u
+         *                 (the delta from D1 must not bleed into the D2 inference window).
+         *
+         *           Verified by checking that D2 produces a TalkStep (not pickup-item),
+         *           since if 101 leaked into D2's "after" snapshot as KeyItemsAdded,
+         *           StepInferenceEngine.Rule2.3 would incorrectly fire.
+         *
+         * BUILDER GUIDANCE:
+         *   - After building the "after" snapshot for decision i (and thus the step),
+         *     call snapshot.ResetPendingKeyItemDeltas() so the next decision's "before"
+         *     snapshot sees a clean slate of pending deltas.
+         */
+
+        // Arrange
+        var opts = TraceEventJsonContext.Default.Options;
+        var inventoryLine = System.Text.Json.JsonSerializer.Serialize<TraceEvent>(
+            InventoryChanged(
+                gained:        [(101u, 1)],
+                lost:          [],
+                newHash:       5u,
+                runId:         "aaa",
+                offsetSeconds: 2.5),
+            opts);
+
+        // D1: Interact (talk) → gains item 101
+        // D2: Interact (talk) → no inventory change → should produce TalkStep
+        var tracePart1 = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone",    argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Obs("GetQuestSequence", argument: QuestIdArg(66130u), value: IntValue(1), offsetSeconds: 0.2),
+            Decision(null, "interact", offsetSeconds: 1),
+            Submitted("Interact", InteractParams(1001u), offsetSeconds: 1.5),
+            Completed("Interact", "ok", offsetSeconds: 2));
+
+        // InventoryChanged fires between D1 Completed and D2 Decision
+        var tracePart2 = MakeTrace(
+            Decision(null, "interact", offsetSeconds: 3),
+            Submitted("Interact", InteractParams(1002u), offsetSeconds: 3.5),
+            Completed("Interact", "ok", offsetSeconds: 4),
+            // No inventory change after D2
+            Decision(null, "done", offsetSeconds: 5),
+            End("done"));
+
+        var jsonl = tracePart1 + "\n" + inventoryLine + "\n" + tracePart2;
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+
+        // D2 step must NOT be a PickupItemStep (which would indicate a delta leak)
+        var lastInteractStep = allSteps.LastOrDefault(s => s is TalkStep or PickupItemStep);
+        Assert.IsType<TalkStep>(lastInteractStep);
     }
 
     // -------------------------------------------------------------------------

@@ -63,6 +63,8 @@ public sealed class TraceToQuestExtractor
         {
             if (events[i] is ObservationEvent obs)
                 snapshot.Apply(obs);
+            else if (events[i] is InventoryChangedEvent inv)
+                snapshot.Apply(inv);
         }
 
         // Step 4: index all decisions in order (matching runId)
@@ -144,13 +146,23 @@ public sealed class TraceToQuestExtractor
                     snapshot.RecordInteract(new NpcId(npcId));
             }
 
-            // e. Advance snapshot: apply ObservationEvents between completed (exclusive) and next decision (exclusive)
+            // e. Advance snapshot: apply ObservationEvents and InventoryChangedEvents between
+            //    completed (exclusive) and next decision (exclusive)
             int advanceStart = completedIdx >= 0 ? completedIdx + 1 : (submittedIdx + 1);
             int advanceEnd = (i + 1 < decisions.Count) ? decisions[i + 1].EventIndex : events.Count;
+
+            // Collect InventoryChangedEvents in this window for HandOver fallback
+            var inventoryChangedInWindow = new List<InventoryChangedEvent>();
+
             for (int j = advanceStart; j < advanceEnd; j++)
             {
                 if (events[j] is ObservationEvent obs)
                     snapshot.Apply(obs);
+                else if (events[j] is InventoryChangedEvent inv)
+                {
+                    snapshot.Apply(inv);
+                    inventoryChangedInWindow.Add(inv);
+                }
             }
 
             // f. afterAt
@@ -206,6 +218,9 @@ public sealed class TraceToQuestExtractor
                     }
                 }
 
+                // Record navigate destination for use by subsequent interact/handover/attunement steps
+                snapshot.RecordNavigateDestination(x, y, z);
+
                 float? stopDist = null;
                 if (submitted.Parameters.HasValue)
                 {
@@ -240,7 +255,11 @@ public sealed class TraceToQuestExtractor
                 }
 
                 var npcZone = (int)(before.Zone.Value);
-                var npcLocation = new NpcLocation(npcId, npcZone, new Position3(0, 0, 0));
+                // Use LastNpcPosition from preceding Navigate if available
+                var npcPos = snapshot.LastNpcPosition is { } lnp
+                    ? new Position3(lnp.X, lnp.Y, lnp.Z)
+                    : new Position3(0, 0, 0);
+                var npcLocation = new NpcLocation(npcId, npcZone, npcPos);
 
                 ExpectValue? expect = null;
                 if (!string.IsNullOrEmpty(inference.SuggestedExpect))
@@ -266,6 +285,33 @@ public sealed class TraceToQuestExtractor
                         Expect = expect
                     };
                 }
+                else if (inference.StepType == "attune")
+                {
+                    // B22: inference engine detected attunement (AethernetShardTargeted was present)
+                    var aetheryteId = after.LastAttuned?.Value ?? npcId;
+                    step = new AttunementStep
+                    {
+                        Id = $"attune-aetheryte-{aetheryteId}",
+                        Target = new Schema.AetheryteId(aetheryteId),
+                        Location = npcLocation,
+                        Expect = expect
+                    };
+                }
+                else if (before.LastAttuned != after.LastAttuned
+                    && after.LastAttuned.HasValue
+                    && after.LastAttuned.Value.Value == npcId)
+                {
+                    // B23 fallback: no AethernetShardTargeted, but IsAetheryteAttuned transitioned 0→1
+                    // and the newly attuned ID matches the submitted NPC target
+                    var aetheryteId = after.LastAttuned.Value.Value;
+                    step = new AttunementStep
+                    {
+                        Id = $"attune-aetheryte-{aetheryteId}",
+                        Target = new Schema.AetheryteId(aetheryteId),
+                        Location = npcLocation,
+                        Expect = expect
+                    };
+                }
                 else
                 {
                     step = new TalkStep
@@ -276,17 +322,114 @@ public sealed class TraceToQuestExtractor
                     };
                 }
             }
+            else if (submittedTypeLower == "handover")
+            {
+                // Parse NPC ID from parameters.target
+                uint npcId = 0;
+                if (submitted.Parameters.HasValue)
+                {
+                    var p = submitted.Parameters.Value;
+                    if (p.TryGetProperty("target", out var tgt))
+                        try { npcId = tgt.GetUInt32(); } catch { }
+                }
+
+                var npcZone = (int)(before.Zone.Value);
+                var npcPos = snapshot.LastNpcPosition is { } lnp
+                    ? new Position3(lnp.X, lnp.Y, lnp.Z)
+                    : new Position3(0, 0, 0);
+                var npcLocation = new NpcLocation(npcId, npcZone, npcPos);
+
+                // Parse item IDs from parameters.items first
+                uint[] itemIds = [];
+                if (submitted.Parameters.HasValue)
+                {
+                    var p = submitted.Parameters.Value;
+                    if (p.TryGetProperty("items", out var itemsEl)
+                        && itemsEl.ValueKind == JsonValueKind.Array)
+                    {
+                        var parsed = new List<uint>();
+                        foreach (var el in itemsEl.EnumerateArray())
+                        {
+                            try { parsed.Add(el.GetUInt32()); } catch { }
+                        }
+                        itemIds = parsed.ToArray();
+                    }
+                }
+
+                // Fallback: collect Lost item IDs from InventoryChangedEvents in window
+                if (itemIds.Length == 0 && inventoryChangedInWindow.Count > 0)
+                {
+                    var fromInventory = new List<uint>();
+                    foreach (var inv in inventoryChangedInWindow)
+                    {
+                        foreach (var lost in inv.Lost)
+                            fromInventory.Add(lost.ItemId);
+                    }
+                    itemIds = fromInventory.ToArray();
+                }
+
+                // If still no items, add a TODO
+                if (itemIds.Length == 0)
+                    todos.Add($"TODO: fill in items handed over at step {stepId} — could not infer from parameters or inventory events");
+
+                ExpectValue? expect = null;
+                if (!string.IsNullOrEmpty(inference.SuggestedExpect))
+                    expect = new PredicateExpect { Predicate = inference.SuggestedExpect };
+
+                step = new HandOverItemStep
+                {
+                    Id = stepId,
+                    Target = npcLocation,
+                    Items = itemIds,
+                    Expect = expect
+                };
+            }
+            else if (submittedTypeLower == "useaethernet")
+            {
+                // Parse shard ID from parameters.destinationShardId or parameters.shardId
+                uint shardId = 0;
+                if (submitted.Parameters.HasValue)
+                {
+                    var p = submitted.Parameters.Value;
+                    if (p.TryGetProperty("destinationShardId", out var sid))
+                        try { shardId = sid.GetUInt32(); } catch { }
+                    else if (p.TryGetProperty("shardId", out var sid2))
+                        try { shardId = sid2.GetUInt32(); } catch { }
+                }
+
+                if (shardId == 0)
+                    todos.Add($"TODO: unknown aethernet destination shard at step {stepId} — fill in destinationShardId manually");
+
+                // Destination zone from after snapshot
+                int destZone = after.Zone.Value > 0 ? (int)after.Zone.Value : (int)before.Zone.Value;
+
+                ExpectValue? expect = null;
+                if (!string.IsNullOrEmpty(inference.SuggestedExpect))
+                    expect = new PredicateExpect { Predicate = inference.SuggestedExpect };
+
+                step = new TravelStep
+                {
+                    Id = stepId,
+                    Destination = new TravelDestination(destZone, null),
+                    RouteHint = new RouteHint(Aethernet: shardId > 0 ? new uint[] { shardId } : null),
+                    Expect = expect
+                };
+            }
             else
             {
                 // Generic step — best effort
                 todos.Add($"unrecognised action type '{submitted.ActionType}' at step {stepId}; manual edit required");
                 // Skip emitting a step for unknown types
+                snapshot.ResetPendingKeyItemDeltas();
                 continue;
             }
 
             // j. groupKey = before.QuestSequence
             var groupKey = before.QuestSequence;
             workingList.Add((groupKey, step));
+
+            // k. Reset pending key-item deltas so they don't leak into the next decision
+            snapshot.ResetPendingKeyItemDeltas();
         }
 
         // Step 6: Group by groupKey preserving order

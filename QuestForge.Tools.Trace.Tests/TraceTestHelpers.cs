@@ -24,8 +24,9 @@ internal static class TraceTestHelpers
 
     internal static RunEndEvent End(
         string outcome = "done",
-        string runId = "aaa")
-        => new(RunId: runId, Outcome: outcome, At: T0.AddSeconds(10));
+        string runId = "aaa",
+        double offsetSeconds = 10)
+        => new(RunId: runId, Outcome: outcome, At: T0.AddSeconds(offsetSeconds));
 
     internal static DecisionEvent Decision(
         string? stepId,
@@ -99,6 +100,115 @@ internal static class TraceTestHelpers
 
     internal static JsonElement FailureValue(string reason = "NotFound")
         => JsonSerializer.SerializeToElement(new { failure = reason, detail = "" });
+
+    // -------------------------------------------------------------------------
+    // New helpers for parity improvement tests (RED phase)
+    // These reference types/methods that do not yet exist — they are intentionally
+    // unresolvable until Builder implements the missing members.
+    // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Builds an <see cref="InventoryChangedEvent"/> for use in parity tests.
+    /// <paramref name="gained"/> and <paramref name="lost"/> default to empty arrays.
+    /// </summary>
+    internal static InventoryChangedEvent InventoryChanged(
+        (uint id, int qty)[]? gained = null,
+        (uint id, int qty)[]? lost   = null,
+        uint newHash = 1u,
+        string runId = "aaa",
+        double offsetSeconds = 2.0)
+        => new(
+            RunId:   runId,
+            Gained:  (gained ?? []).Select(t => new KeyItemDelta(t.id, t.qty)).ToArray(),
+            Lost:    (lost   ?? []).Select(t => new KeyItemDelta(t.id, t.qty)).ToArray(),
+            NewHash: newHash,
+            At:      T0.AddSeconds(offsetSeconds));
+
+    /// <summary>
+    /// Builds the Parameters JsonElement for a HandOver action.
+    /// Shape: {"target": npcId, "items": [itemId, ...]}
+    /// </summary>
+    internal static JsonElement HandOverParams(uint npcId, params uint[] itemIds)
+        => JsonSerializer.SerializeToElement(new
+        {
+            target = npcId,
+            items  = itemIds
+        });
+
+    /// <summary>
+    /// Builds the Parameters JsonElement for a UseAethernet action.
+    /// Shape: {"destinationShardId": shardId}
+    /// </summary>
+    internal static JsonElement UseAethernetParams(uint destinationShardId)
+        => JsonSerializer.SerializeToElement(new { destinationShardId });
+
+    /// <summary>
+    /// Builds a JsonElement representing an item-count adapter argument.
+    /// Shape: {"value": itemId}
+    /// </summary>
+    internal static JsonElement ItemCountArg(uint itemId)
+        => JsonSerializer.SerializeToElement(new { value = itemId });
+
+    /// <summary>
+    /// Builds a JsonElement representing an item-count adapter return value.
+    /// Shape: {"value": count}
+    /// </summary>
+    internal static JsonElement ItemCountValue(int count)
+        => JsonSerializer.SerializeToElement(new { value = count });
+
+    /// <summary>
+    /// Builds a JsonElement that is just a plain unsigned number (no wrapper object).
+    /// Used to test plain-number argument shapes.
+    /// </summary>
+    internal static JsonElement PlainNumber(uint n)
+        => JsonSerializer.SerializeToElement(n);
+
+    /// <summary>
+    /// Builds an <see cref="ObservationEvent"/> for the "IsAetheryteAttuned" method.
+    /// <paramref name="value"/> is 0 or 1 (integer form, as emitted by authoring mode).
+    /// </summary>
+    internal static ObservationEvent ObsIsAetheryteAttuned(
+        uint aetheryteId,
+        int value = 1,
+        string runId = "aaa",
+        double offsetSeconds = 1.0)
+        => Obs(
+            method:        "IsAetheryteAttuned",
+            argument:      ItemCountArg(aetheryteId),
+            value:         IntValue(value),
+            runId:         runId,
+            offsetSeconds: offsetSeconds);
+
+    /// <summary>
+    /// Builds an <see cref="ObservationEvent"/> for the "AethernetShardTargeted" method.
+    /// Only present in authoring/unified traces — not pure engine-run traces.
+    /// </summary>
+    internal static ObservationEvent ObsAethernetShardTargeted(
+        uint shardId,
+        string runId = "aaa",
+        double offsetSeconds = 0.5)
+        => Obs(
+            method:        "AethernetShardTargeted",
+            argument:      null,
+            value:         PlainNumber(shardId),
+            runId:         runId,
+            offsetSeconds: offsetSeconds);
+
+    /// <summary>
+    /// Builds an <see cref="ObservationEvent"/> for the "GetItemCount" method.
+    /// Argument shape: {"value": itemId}; value shape: {"value": count}.
+    /// </summary>
+    internal static ObservationEvent ObsGetItemCount(
+        uint itemId,
+        int count,
+        string runId = "aaa",
+        double offsetSeconds = 1.0)
+        => Obs(
+            method:        "GetItemCount",
+            argument:      ItemCountArg(itemId),
+            value:         ItemCountValue(count),
+            runId:         runId,
+            offsetSeconds: offsetSeconds);
 
     // -------------------------------------------------------------------------
     // JSONL serializer
