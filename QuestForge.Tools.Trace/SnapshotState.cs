@@ -27,6 +27,13 @@ public sealed class SnapshotState
     public bool QuestCompleted { get; private set; }
     public NpcId? LastNpcInteracted { get; private set; }
     public WorldPosition? LastNpcPosition { get; private set; }
+    public AetheryteId? LastAttuned { get; private set; }
+    public AetheryteId? LastAethernetShardInteracted { get; private set; }
+
+    private readonly Dictionary<uint, int> _keyItemCounts = new();
+    private List<uint>? _pendingKeyItemsAdded;
+    private List<uint>? _pendingKeyItemsRemoved;
+    private uint _lastInventoryHash;
 
     /// <summary>
     /// Apply one observation event to the accumulated state.
@@ -87,10 +94,133 @@ public sealed class SnapshotState
                     QuestCompleted = ev.Value.Value.GetBoolean();
                 return true;
 
+            case "IsAetheryteAttuned":
+            {
+                // Parse argument: {"value": uint} → aetheryteId
+                if (!ev.Argument.HasValue) return true;
+                var arg = ev.Argument.Value;
+                uint argId = 0;
+                if (arg.ValueKind == JsonValueKind.Number)
+                    { try { argId = arg.GetUInt32(); } catch { } }
+                else if (arg.ValueKind == JsonValueKind.Object && arg.TryGetProperty("value", out var av))
+                    { try { argId = av.GetUInt32(); } catch { } }
+
+                if (argId == 0) return true;
+
+                // Parse value: integer 1, boolean true → set LastAttuned; 0 or false → no-op
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                bool isTruthy = val.ValueKind == JsonValueKind.True
+                    || (val.ValueKind == JsonValueKind.Number && val.TryGetInt32(out var iv) && iv == 1)
+                    // object-wrapped: {"value": true/1}
+                    || (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("value", out var vv)
+                        && (vv.ValueKind == JsonValueKind.True
+                            || (vv.ValueKind == JsonValueKind.Number && vv.TryGetInt32(out var ivv) && ivv == 1)));
+
+                if (isTruthy)
+                    LastAttuned = new AetheryteId(argId);
+
+                return true;
+            }
+
+            case "AethernetShardTargeted":
+            {
+                // Parse value as plain uint (or {"value": uint})
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                uint shardId = 0;
+                if (val.ValueKind == JsonValueKind.Number)
+                    { try { shardId = val.GetUInt32(); } catch { } }
+                else if (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("value", out var vv))
+                    { try { shardId = vv.GetUInt32(); } catch { } }
+
+                LastAethernetShardInteracted = new AetheryteId(shardId);
+                return true;
+            }
+
+            case "GetItemCount":
+            {
+                // Parse argument: {"value": uint} → itemId
+                if (!ev.Argument.HasValue || !ev.Value.HasValue) return true;
+                var arg = ev.Argument.Value;
+                uint itemId = 0;
+                if (arg.ValueKind == JsonValueKind.Object && arg.TryGetProperty("value", out var av))
+                    { try { itemId = av.GetUInt32(); } catch { return true; } }
+                else if (arg.ValueKind == JsonValueKind.Number)
+                    { try { itemId = arg.GetUInt32(); } catch { return true; } }
+
+                if (itemId == 0) return true;
+
+                // Parse value: {"value": int} or plain int; guard against failure shape
+                var val = ev.Value.Value;
+                int count = 0;
+                if (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("value", out var vv))
+                    { try { count = vv.GetInt32(); } catch { return true; } }
+                else if (val.ValueKind == JsonValueKind.Number)
+                    { try { count = val.GetInt32(); } catch { return true; } }
+                else
+                    return true; // failure or unknown shape — guard
+
+                _keyItemCounts[itemId] = count;
+                return true;
+            }
+
             default:
                 return false;
         }
     }
+
+    /// <summary>
+    /// Apply an <see cref="InventoryChangedEvent"/> to accumulated key-item counts.
+    /// Updates pending delta lists for the next ToSnapshot call.
+    /// </summary>
+    public bool Apply(InventoryChangedEvent ev)
+    {
+        foreach (var item in ev.Gained)
+        {
+            _keyItemCounts.TryGetValue(item.ItemId, out var current);
+            _keyItemCounts[item.ItemId] = current + item.Qty;
+            (_pendingKeyItemsAdded ??= []).Add(item.ItemId);
+        }
+
+        foreach (var item in ev.Lost)
+        {
+            _keyItemCounts.TryGetValue(item.ItemId, out var current);
+            var newQty = current - item.Qty;
+            if (newQty <= 0)
+                _keyItemCounts.Remove(item.ItemId);
+            else
+                _keyItemCounts[item.ItemId] = newQty;
+            (_pendingKeyItemsRemoved ??= []).Add(item.ItemId);
+        }
+
+        _lastInventoryHash = ev.NewHash;
+        return true;
+    }
+
+    /// <summary>Convenience alias used by test helpers.</summary>
+    public void ApplyInventoryChanged(InventoryChangedEvent ev) => Apply(ev);
+
+    /// <summary>
+    /// Clear pending delta lists so the next decision's "after" snapshot sees a clean slate.
+    /// Does NOT clear the running _keyItemCounts.
+    /// </summary>
+    public void ResetPendingKeyItemDeltas()
+    {
+        _pendingKeyItemsAdded = null;
+        _pendingKeyItemsRemoved = null;
+    }
+
+    /// <summary>
+    /// Record the navigate destination as the last NPC position.
+    /// Called from the extractor when a Navigate action completes.
+    /// </summary>
+    public void RecordNavigateDestination(float x, float y, float z)
+        => LastNpcPosition = new WorldPosition(x, y, z);
+
+    /// <summary>Overload accepting WorldPosition directly (used by tests).</summary>
+    public void RecordNavigateDestination(WorldPosition destination)
+        => LastNpcPosition = destination;
 
     private bool QuestArgMatches(ObservationEvent ev)
     {
@@ -117,7 +247,13 @@ public sealed class SnapshotState
     public GameStateSnapshot ToSnapshot(DateTimeOffset at)
         => new(at, Zone, Position, _activeQuest, QuestSequence, QuestFlags,
                QuestAccepted, QuestCompleted, LastNpcInteracted, LastNpcPosition,
-               null, null, 0u, null);  // Phase 11B: LastAttuned not tracked by replay extractor yet
+               null, null, _lastInventoryHash, LastAttuned)
+        {
+            LastAethernetShardInteracted = LastAethernetShardInteracted,
+            KeyItems = new Dictionary<uint, int>(_keyItemCounts),
+            KeyItemsAdded = _pendingKeyItemsAdded,
+            KeyItemsRemoved = _pendingKeyItemsRemoved
+        };
 
     /// <summary>
     /// Convenience overload used by <see cref="Quest.TraceToQuestExtractor"/>.
@@ -126,7 +262,13 @@ public sealed class SnapshotState
     public GameStateSnapshot ToSnapshot(DateTimeOffset at, QuestId activeQuest)
         => new(at, Zone, Position, activeQuest, QuestSequence, QuestFlags,
                QuestAccepted, QuestCompleted, LastNpcInteracted, LastNpcPosition,
-               null, null, 0u, null);  // Phase 11B: LastAttuned not tracked by replay extractor yet
+               null, null, _lastInventoryHash, LastAttuned)
+        {
+            LastAethernetShardInteracted = LastAethernetShardInteracted,
+            KeyItems = new Dictionary<uint, int>(_keyItemCounts),
+            KeyItemsAdded = _pendingKeyItemsAdded,
+            KeyItemsRemoved = _pendingKeyItemsRemoved
+        };
 
     /// <summary>
     /// Record an NPC interaction action (called by the extractor at action boundaries,
