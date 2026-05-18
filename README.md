@@ -14,10 +14,10 @@ Schema validator and CLI tools for [QuestForge](https://github.com/simplekantan/
 |---------|---------|
 | `QuestForge.Schema` | C# types for the quest schema — step types, predicates, fragments. Source-generated `System.Text.Json` serialization. |
 | `QuestForge.Tools.Validator` | Structural validator: 20+ rules covering required fields, step IDs, recovery gotos, branch nesting, fragment references, step-type constraints, and more. |
-| `QuestForge.Tools.Validator.Tests` | xUnit test suite (136 tests). Runs without a game instance. |
+| `QuestForge.Tools.Validator.Tests` | xUnit test suite (148 tests). Runs without a game instance. |
 | `qf-validate` | CLI entry point. Discovers `quests/**/*.json` and `fragments/**/*.json`, validates each file, and reports errors in text or JSON format. |
 | `QuestForge.Tools.Trace` | Trace reader + fixture/quest extractor library. Reads `.jsonl` trace files. |
-| `QuestForge.Tools.Trace.Tests` | xUnit test suite (44 tests). |
+| `QuestForge.Tools.Trace.Tests` | xUnit test suite (107 tests). |
 | `qf-trace` | CLI entry point for trace extraction. |
 
 ---
@@ -71,6 +71,8 @@ Reads a `.jsonl` trace file and produces a fixture JSON draft:
 qf-trace extract-fixture <trace.jsonl> [--quest-data <dir>] [--out <file>]
 ```
 
+Capability inference covers all 22 schema step types, including `step:attune` and `step:hand-over-item`.
+
 ### validate-fixture
 
 Cross-validates a committed fixture against its referenced quest file:
@@ -96,6 +98,8 @@ qf-trace extract-quest <trace.jsonl> [--quest-data <dir>] [--out <file>]
 ```
 
 Output includes a TODO list of fields that require manual completion (name, expansion, prerequisites).
+
+Extracted step types: `AcceptStep`, `TalkStep`/`TurnInStep` (interact), `TravelStep` (navigate + zone changes), `AttunementStep` (aetheryte attunement), `HandOverItemStep` (key item hand-over), `TravelStep` with aethernet route hint (`UseAethernet` action).
 
 ---
 

@@ -34,7 +34,7 @@ dotnet test QuestForge.Tools.Validator.Tests/QuestForge.Tools.Validator.Tests.cs
 dotnet test QuestForge.Tools.Trace.Tests/QuestForge.Tools.Trace.Tests.csproj
 ```
 
-Both test suites run without a game instance or Dalamud installation. 136 validator tests, 44 trace tests.
+Both test suites run without a game instance or Dalamud installation. 148 validator tests, 107 trace tests.
 
 ---
 
@@ -53,6 +53,17 @@ Follow the existing rule pattern: rules are self-contained, return typed `Valida
 1. Add a class implementing the subcommand logic in `QuestForge.Tools.Trace`
 2. Add tests in `QuestForge.Tools.Trace.Tests`
 3. Wire CLI dispatch in `qf-trace/Program.cs`
+
+---
+
+## Adding a new step type to the extractor
+
+When `TraceToQuestExtractor` needs to produce a new step type from trace events:
+
+1. **If the step requires new state tracking** — add the relevant field(s) to `SnapshotState` and update the snapshot logic to populate them from preceding events.
+2. **If the step is triggered by a new event type** — add recognition of that event in `TraceEventParser` so the parser emits a typed record for it.
+3. **Add capability inference** — add a `step:<type>` entry to `CapabilityInferrer.StepCapabilities` so `extract-fixture` reports coverage for the new step type.
+4. Add tests in `QuestForge.Tools.Trace.Tests` covering the extraction and (if applicable) capability inference for the new step type.
 
 ---
 
