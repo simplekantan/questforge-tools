@@ -532,6 +532,207 @@ public sealed class CapabilityInferrerTests
     }
 
     // =========================================================================
+    // CI-HO-1/2/3 — HandOverItemStep capability inference (feat/extract-fixtures-update)
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithHandOverItemStep_EmitsStepHandOverItem()
+    {
+        /*
+         * RED: Will fail until Builder adds [typeof(HandOverItemStep)] = "step:hand-over-item"
+         *      to CapabilityInferrer.StepCapabilities.
+         *
+         * CONTRACT: Given a QuestDefinition with one HandOverItemStep,
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result contains "step:hand-over-item".
+         *
+         * BUILDER GUIDANCE: Add to StepCapabilities dictionary:
+         *   [typeof(HandOverItemStep)] = "step:hand-over-item",
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 66104u,
+            Name              = "HandOver Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new HandOverItemStep
+                        {
+                            Id     = "hand-over-shard",
+                            Target = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f)),
+                            Items  = [2000386u]
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:hand-over-item", caps);
+    }
+
+    [Fact]
+    public void Infer_HandOverItemStepWithPlayerHasItemExpect_EmitsPredicatePlayerHasItem()
+    {
+        /*
+         * CONTRACT: Given a HandOverItemStep with Expect = PredicateExpect("not(playerHasItem(2000386))"),
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result contains "step:hand-over-item"
+         *                AND the result contains "predicate:not"
+         *                AND the result contains "predicate:playerHasItem".
+         *
+         * WalkExpect uses a regex that finds ALL function call names in the predicate string,
+         * so nested calls like not(playerHasItem(X)) emit both predicate tags.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 66104u,
+            Name              = "HandOver Expect Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new HandOverItemStep
+                        {
+                            Id     = "hand-over-with-expect",
+                            Target = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f)),
+                            Items  = [2000386u],
+                            Expect = new PredicateExpect { Predicate = "not(playerHasItem(2000386))" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:hand-over-item", caps);
+        Assert.Contains("predicate:not", caps);
+        Assert.Contains("predicate:playerHasItem", caps);
+    }
+
+    [Fact]
+    public void Infer_QuestWith66104Steps_EmitsCorrectCapabilities()
+    {
+        /*
+         * RED: Will fail until Builder adds [typeof(HandOverItemStep)] = "step:hand-over-item"
+         *      to CapabilityInferrer.StepCapabilities.
+         *
+         * CONTRACT: Given a quest with AcceptStep, two AttunementSteps, TravelStep,
+         *           HandOverItemStep, and TurnInStep,
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then result contains all of:
+         *             "step:accept", "step:attune", "step:hand-over-item",
+         *             "step:travel", "step:turn-in"
+         *           AND the result is sorted (Ordinal) so these appear in this index order:
+         *             accept < attune < hand-over-item < travel < turn-in.
+         *
+         * BUILDER GUIDANCE: All step tags except "step:hand-over-item" are already registered.
+         *   Adding HandOverItemStep to StepCapabilities is the only change required.
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 66104u,
+            Name              = "Full Quest 66104",
+            Expansion         = "arr",
+            Category          = "msq",
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements { MinLevel = 1, Prereqs = [] },
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new AcceptStep
+                        {
+                            Id     = "accept-quest",
+                            Target = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f))
+                        },
+                        new AttunementStep { Id = "attune-1", Target = new AetheryteId(8) },
+                        new AttunementStep { Id = "attune-2", Target = new AetheryteId(9) },
+                        new TravelStep
+                        {
+                            Id          = "travel-to-npc",
+                            Destination = new TravelDestination(182)
+                        },
+                        new HandOverItemStep
+                        {
+                            Id     = "hand-over-item",
+                            Target = new NpcLocation(1003988u, 182, new Position3(21.84f, 7.0f, -81.13f)),
+                            Items  = [2000386u]
+                        },
+                        new TurnInStep
+                        {
+                            Id     = "turn-in",
+                            Target = new NpcLocation(1003988u, 182, new Position3(21.84f, 7.0f, -81.13f))
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert — all expected tags are present
+        Assert.Contains("step:accept",         caps);
+        Assert.Contains("step:attune",         caps);
+        Assert.Contains("step:hand-over-item", caps);
+        Assert.Contains("step:travel",         caps);
+        Assert.Contains("step:turn-in",        caps);
+
+        // Assert — sorted order (Ordinal): accept < attune < hand-over-item < travel < turn-in
+        var list = caps.ToList();
+        var acceptIdx      = list.IndexOf("step:accept");
+        var attuneIdx      = list.IndexOf("step:attune");
+        var handOverIdx    = list.IndexOf("step:hand-over-item");
+        var travelIdx      = list.IndexOf("step:travel");
+        var turnInIdx      = list.IndexOf("step:turn-in");
+
+        Assert.True(acceptIdx   < attuneIdx,   "step:accept must sort before step:attune");
+        Assert.True(attuneIdx   < handOverIdx, "step:attune must sort before step:hand-over-item");
+        Assert.True(handOverIdx < travelIdx,   "step:hand-over-item must sort before step:travel");
+        Assert.True(travelIdx   < turnInIdx,   "step:travel must sort before step:turn-in");
+    }
+
+    // =========================================================================
     // B8 — CutsceneStep capability inference
     // =========================================================================
 
