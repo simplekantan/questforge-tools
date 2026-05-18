@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using QuestForge.Schema;
 
 namespace QuestForge.Tools.Trace.Capabilities;
@@ -33,6 +34,7 @@ public static class CapabilityInferrer
         [typeof(InteractObjectStep)]      = "step:interact-object",
         [typeof(PickupItemStep)]          = "step:pickup-item",
         [typeof(AttunementStep)]          = "step:attune",
+        [typeof(HandOverItemStep)]        = "step:hand-over-item",
     };
 
     /// <summary>
@@ -66,9 +68,8 @@ public static class CapabilityInferrer
                     {
                         if (!string.IsNullOrEmpty(bc.When))
                         {
-                            var funcName = bc.When.Split('(')[0].Trim();
-                            if (!string.IsNullOrEmpty(funcName))
-                                caps.Add($"predicate:{funcName}");
+                            foreach (var fn in ExtractFunctionNames(bc.When))
+                                caps.Add($"predicate:{fn}");
                         }
                         // Also walk steps inside branches
                         foreach (var innerStep in (bc.Steps ?? []))
@@ -104,24 +105,26 @@ public static class CapabilityInferrer
         switch (ev)
         {
             case PredicateExpect p:
-                var funcName = p.Predicate.Split('(')[0].Trim();
-                if (!string.IsNullOrEmpty(funcName))
-                    caps.Add($"predicate:{funcName}");
+                foreach (var fn in ExtractFunctionNames(p.Predicate))
+                    caps.Add($"predicate:{fn}");
                 break;
             case AllExpect a:
                 foreach (var pred in a.All)
-                {
-                    var fn = pred.Split('(')[0].Trim();
-                    if (!string.IsNullOrEmpty(fn)) caps.Add($"predicate:{fn}");
-                }
+                    foreach (var fn in ExtractFunctionNames(pred))
+                        caps.Add($"predicate:{fn}");
                 break;
             case AnyExpect any:
                 foreach (var pred in any.Any)
-                {
-                    var fn = pred.Split('(')[0].Trim();
-                    if (!string.IsNullOrEmpty(fn)) caps.Add($"predicate:{fn}");
-                }
+                    foreach (var fn in ExtractFunctionNames(pred))
+                        caps.Add($"predicate:{fn}");
                 break;
         }
     }
+
+    // Matches every identifier immediately followed by '(' — i.e., every function call name.
+    private static readonly Regex FunctionCallPattern =
+        new(@"\b([a-zA-Z]\w*)(?=\()", RegexOptions.Compiled);
+
+    private static IEnumerable<string> ExtractFunctionNames(string predicate)
+        => FunctionCallPattern.Matches(predicate).Select(m => m.Value);
 }

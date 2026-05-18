@@ -285,7 +285,7 @@ public sealed class TraceToQuestExtractor
                         Expect = expect
                     };
                 }
-                else if (inference.StepType == "attune")
+                else if (inference.StepType == TraceConstants.ActionAttune)
                 {
                     // B22: inference engine detected attunement (AethernetShardTargeted was present)
                     var aetheryteId = after.LastAttuned?.Value ?? npcId;
@@ -322,7 +322,7 @@ public sealed class TraceToQuestExtractor
                     };
                 }
             }
-            else if (submittedTypeLower == "handover")
+            else if (submittedTypeLower == TraceConstants.ActionHandover)
             {
                 // Parse NPC ID from parameters.target
                 uint npcId = 0;
@@ -384,7 +384,7 @@ public sealed class TraceToQuestExtractor
                     Expect = expect
                 };
             }
-            else if (submittedTypeLower == "useaethernet")
+            else if (submittedTypeLower == TraceConstants.ActionUseAethernet)
             {
                 // Parse shard ID from parameters.destinationShardId or parameters.shardId
                 uint shardId = 0;
