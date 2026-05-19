@@ -141,7 +141,7 @@ public sealed class TraceToQuestExtractorIntegrationTests
         Assert.Contains(allSteps, s => s is AttunementStep);
         Assert.Contains(allSteps, s => s is TravelStep ts
             && ts.RouteHint?.Aethernet != null
-            && ts.RouteHint.Aethernet.Contains(77u));
+            && ts.RouteHint.Aethernet.To == 77u);
         Assert.Contains(allSteps, s => s is HandOverItemStep ho
             && ho.Items.Contains(501u));
         Assert.Contains(allSteps, s => s is TurnInStep);
@@ -151,7 +151,7 @@ public sealed class TraceToQuestExtractorIntegrationTests
         int attuneIdx  = allSteps.FindIndex(s => s is AttunementStep);
         int travelIdx  = allSteps.FindIndex(s => s is TravelStep ts
             && ts.RouteHint?.Aethernet != null
-            && ts.RouteHint.Aethernet.Contains(77u));
+            && ts.RouteHint.Aethernet.To == 77u);
         int handOverIdx = allSteps.FindIndex(s => s is HandOverItemStep);
         int turnInIdx  = allSteps.FindIndex(s => s is TurnInStep);
 

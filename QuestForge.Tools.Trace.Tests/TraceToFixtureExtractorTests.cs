@@ -332,6 +332,149 @@ public sealed class TraceToFixtureExtractorTests
     // Additional: SuggestFilename returns "simple-linear-acceptance.json" for travel+talk
     // -------------------------------------------------------------------------
 
+    // =========================================================================
+    // FX-NEW-1/2/3/4 — New action types in transitions (feat/extract-fixtures-update)
+    // =========================================================================
+
+    [Fact]
+    public void Extract_HandoverDecision_AppearsInTransitions()
+    {
+        /*
+         * CONTRACT: Given RunStart → Decision(null, "handover") → RunEnd("done"),
+         *           When  Extract,
+         *           Then  transitions contains exactly one entry with ActionType == "handover".
+         *
+         * "handover" is NOT a terminal action (IsTerminalAction returns false for it),
+         * so it must appear in ExpectedTransitions.
+         *
+         * GREEN: no code change needed — IsTerminalAction does not filter this action type.
+         * Added here as a regression test to lock the behaviour.
+         */
+
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(),
+            Decision(null, "handover", offsetSeconds: 1),
+            End("done")
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Single(fixture.ExpectedTransitions);
+        Assert.Equal("handover", fixture.ExpectedTransitions[0].ActionType);
+    }
+
+    [Fact]
+    public void Extract_UseAethernetDecision_AppearsInTransitions()
+    {
+        /*
+         * CONTRACT: Given RunStart → Decision(null, "useaethernet") → RunEnd("done"),
+         *           When  Extract,
+         *           Then  transitions contains exactly one entry with ActionType == "useaethernet".
+         *
+         * "useaethernet" is NOT a terminal action (IsTerminalAction returns false for it),
+         * so it must appear in ExpectedTransitions.
+         *
+         * GREEN: no code change needed — IsTerminalAction does not filter this action type.
+         * Added here as a regression test to lock the behaviour.
+         */
+
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            End("done")
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Single(fixture.ExpectedTransitions);
+        Assert.Equal("useaethernet", fixture.ExpectedTransitions[0].ActionType);
+    }
+
+    [Fact]
+    public void Extract_AttuneDecision_AppearsInTransitions()
+    {
+        /*
+         * CONTRACT: Given RunStart → Decision(null, "attune") → RunEnd("done"),
+         *           When  Extract,
+         *           Then  transitions contains exactly one entry with ActionType == "attune".
+         *
+         * "attune" is NOT a terminal action (IsTerminalAction returns false for it),
+         * so it must appear in ExpectedTransitions.
+         *
+         * GREEN: no code change needed — IsTerminalAction does not filter this action type.
+         * Added here as a regression test to lock the behaviour.
+         */
+
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(),
+            Decision(null, "attune", offsetSeconds: 1),
+            End("done")
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Single(fixture.ExpectedTransitions);
+        Assert.Equal("attune", fixture.ExpectedTransitions[0].ActionType);
+    }
+
+    [Fact]
+    public void Extract_FullQuestWithNewActionTypes_AllThreeAppearsInTransitions()
+    {
+        /*
+         * CONTRACT: Given RunStart → Decision("s1","attune") → Decision("s2","handover")
+         *                → Decision("s3","useaethernet") → RunEnd("done"),
+         *           When  Extract,
+         *           Then  transitions contains all three in order:
+         *                 [0].ActionType == "attune",
+         *                 [1].ActionType == "handover",
+         *                 [2].ActionType == "useaethernet".
+         *
+         * None of these action types are terminal, so all three appear in transitions.
+         *
+         * GREEN: no code change needed — IsTerminalAction does not filter any of these.
+         * Added here as a regression test to lock the behaviour.
+         */
+
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(),
+            Decision("s1", "attune",        offsetSeconds: 1),
+            Decision("s2", "handover",      offsetSeconds: 2),
+            Decision("s3", "useaethernet",  offsetSeconds: 3),
+            End("done")
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Equal(3, fixture.ExpectedTransitions.Count);
+        Assert.Equal("attune",       fixture.ExpectedTransitions[0].ActionType);
+        Assert.Equal("handover",     fixture.ExpectedTransitions[1].ActionType);
+        Assert.Equal("useaethernet", fixture.ExpectedTransitions[2].ActionType);
+    }
+
     [Fact]
     public void SuggestFilename_TravelPlusTalk_ReturnsSimpleLinearAcceptance()
     {

@@ -692,13 +692,18 @@ public sealed class TraceToQuestExtractorTests
          *           and a zone change after (GetPlayerZone=201),
          *           When  Extract,
          *           Then  the produced step is TravelStep with
-         *                 Destination.Zone == 201 AND RouteHint.Aethernet == [77u].
+         *                 Destination.Zone == 201 AND RouteHint.Aethernet.To == 77u.
          *
-         * BUILDER GUIDANCE:
+         * BUILDER GUIDANCE (Issue #25):
          *   - Add "useaethernet" (case-insensitive) to the action switch.
-         *   - Parse parameters.destinationShardId (uint).
+         *   - Parse parameters.destinationShardId (uint) → AethernetRouteHint.To.
+         *   - Parse optional parameters.sourceShardId (uint) → AethernetRouteHint.From.
          *   - Destination.Zone from after.Zone (zone observed after completion).
-         *   - RouteHint = new RouteHint(Aethernet: [destinationShardId]).
+         *   - RouteHint = new RouteHint(Aethernet: new AethernetRouteHint(From: ..., To: destShardId)).
+         *
+         * TODO BUILDER: Old assertion was `Assert.Contains(77u, travel.RouteHint.Aethernet!)`
+         * using array containment. Now Aethernet is AethernetRouteHint; assert .To == 77u.
+         * The old array form is now a compile error (RouteHint.Aethernet is AethernetRouteHint?).
          */
 
         // Arrange
@@ -726,8 +731,10 @@ public sealed class TraceToQuestExtractorTests
         Assert.NotNull(travel);
         Assert.Equal(201, travel!.Destination.Zone);
         Assert.NotNull(travel.RouteHint);
+        // RED: AethernetRouteHint does not exist yet — compile error expected when
+        // asserting .To property (Aethernet is still string[]? in tools-side schema)
         Assert.NotNull(travel.RouteHint!.Aethernet);
-        Assert.Contains(77u, travel.RouteHint.Aethernet!);
+        Assert.Equal(77u, travel.RouteHint!.Aethernet!.To);
     }
 
     // -------------------------------------------------------------------------
@@ -746,10 +753,12 @@ public sealed class TraceToQuestExtractorTests
          *           Then  a TravelStep is still produced AND Todos contains a string
          *                 mentioning "aethernet" (case-insensitive).
          *
-         * BUILDER GUIDANCE:
+         * BUILDER GUIDANCE (Issue #25):
          *   - When destinationShardId == 0 or missing, emit TravelStep with
-         *     RouteHint = new RouteHint(Aethernet: []) or null.
+         *     RouteHint = null (no confirmed shard to teleport to).
          *   - Record a TODO about the unknown aethernet destination.
+         *   - Do NOT emit AethernetRouteHint with To=0; that would fail the validator rule
+         *     "structural/route-hint-aethernet-to-missing".
          */
 
         // Arrange — parameters with destinationShardId=0 (sentinel for unknown)
@@ -1183,5 +1192,245 @@ public sealed class TraceToQuestExtractorTests
         Assert.Contains(draft.Todos, t => t.Contains("expansion", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(draft.Todos, t => t.Contains("category", StringComparison.OrdinalIgnoreCase));
         Assert.Contains(draft.Todos, t => t.Contains("lastVerifiedPatch", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // -------------------------------------------------------------------------
+    // Issue #25: Tests for sourceShardId parameter in UseAethernet trace events
+    // and the new AethernetRouteHint type in TraceToQuestExtractor
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // Test 35 — UseAethernet with sourceShardId → AethernetRouteHint.From is populated
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetAction_WithSourceShardId_SetsRouteHintFrom()
+    {
+        /*
+         * RED: Will fail until Builder:
+         *   1. Adds AethernetRouteHint to QuestForge.Schema
+         *   2. Changes RouteHint.Aethernet from string[]? to AethernetRouteHint?
+         *   3. Updates TraceToQuestExtractor useaethernet branch to read parameters.sourceShardId
+         *
+         * CONTRACT: Given UseAethernet action with parameters containing both
+         *           sourceShardId=125 and destinationShardId=77,
+         *           When  Extract,
+         *           Then  TravelStep.RouteHint.Aethernet.From == 125u
+         *                 AND TravelStep.RouteHint.Aethernet.To == 77u.
+         *
+         * BUILDER GUIDANCE:
+         *   In the useaethernet branch, after parsing destinationShardId:
+         *     uint sourceShardId = 0;
+         *     if (p.TryGetProperty("sourceShardId", out var src))
+         *         try { sourceShardId = src.GetUInt32(); } catch { }
+         *   Then construct:
+         *     new AethernetRouteHint(
+         *         From: sourceShardId == 0 ? null : sourceShardId,
+         *         To: destShardId)
+         */
+
+        // Arrange — UseAethernetParams updated to include sourceShardId
+        // RED: UseAethernetParamsWithSource helper does not exist yet
+        var paramsWithSource = UseAethernetParamsWithSource(sourceShardId: 125u, destinationShardId: 77u);
+
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", paramsWithSource, offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(201u), offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var travel = allSteps.OfType<TravelStep>().LastOrDefault();
+        Assert.NotNull(travel);
+        Assert.NotNull(travel!.RouteHint);
+        // RED: AethernetRouteHint does not exist — compile error expected on .From and .To
+        Assert.NotNull(travel.RouteHint!.Aethernet);
+        Assert.Equal(77u, travel.RouteHint!.Aethernet!.To);
+        Assert.Equal(125u, travel.RouteHint.Aethernet.From);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 36 — UseAethernet without sourceShardId → AethernetRouteHint.From is null
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetAction_WithoutSourceShardId_FromIsNull()
+    {
+        /*
+         * RED: Will fail until Builder adds AethernetRouteHint and updates extractor.
+         *
+         * CONTRACT: Given UseAethernet action with only destinationShardId=77 (no sourceShardId),
+         *           When  Extract,
+         *           Then  TravelStep.RouteHint.Aethernet.From is null
+         *                 AND TravelStep.RouteHint.Aethernet.To == 77u.
+         *
+         * BUILDER GUIDANCE: sourceShardId is optional; when absent or 0, From = null.
+         */
+
+        // Arrange — only destination, no source
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", UseAethernetParams(77u), offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(201u), offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var travel = draft.Definition.Sequences
+            .SelectMany(s => s.Steps)
+            .OfType<TravelStep>()
+            .LastOrDefault();
+        Assert.NotNull(travel);
+        Assert.NotNull(travel!.RouteHint?.Aethernet);
+        // RED: AethernetRouteHint does not exist — compile error expected
+        Assert.Equal(77u, travel.RouteHint!.Aethernet!.To);
+        Assert.Null(travel.RouteHint.Aethernet.From);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 37 — UseAethernet with sourceShardId=0 treats it as null (sentinel)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetAction_SourceShardIdZero_TreatedAsNull()
+    {
+        /*
+         * RED: Will fail until Builder adds AethernetRouteHint and updates extractor.
+         *
+         * CONTRACT: Given UseAethernet action with sourceShardId=0 and destinationShardId=77,
+         *           When  Extract,
+         *           Then  AethernetRouteHint.From is null (0 is the unset sentinel).
+         *
+         * BUILDER GUIDANCE: When sourceShardId == 0, set From = null. Only non-zero
+         * source shard IDs are meaningful.
+         */
+
+        // Arrange
+        var paramsWithZeroSource = UseAethernetParamsWithSource(sourceShardId: 0u, destinationShardId: 77u);
+
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", paramsWithZeroSource, offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(201u), offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var extractor = new TraceToQuestExtractor();
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var travel = draft.Definition.Sequences
+            .SelectMany(s => s.Steps)
+            .OfType<TravelStep>()
+            .LastOrDefault();
+        Assert.NotNull(travel);
+        Assert.NotNull(travel!.RouteHint?.Aethernet);
+        // RED: AethernetRouteHint does not exist — compile error expected
+        Assert.Equal(77u, travel.RouteHint!.Aethernet!.To);
+        Assert.Null(travel.RouteHint.Aethernet.From);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 38 — UseAethernetParams helper: existing signature (no source) stays valid
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Extract_UseAethernetParams_NoSourceShardId_StillProducesValidStep()
+    {
+        /*
+         * CONTRACT: The existing UseAethernetParams helper (no sourceShardId) must
+         * continue to work — no breaking change to existing test helpers.
+         *
+         * Verifies that the addition of optional sourceShardId parsing does not break
+         * traces recorded before Issue #25 (where only destinationShardId was emitted).
+         *
+         * RED: Will fail until Builder adds AethernetRouteHint and updates extractor.
+         */
+
+        var jsonl = MakeTrace(
+            Start(questId: 66130u),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(182u), offsetSeconds: 0.1),
+            Decision(null, "useaethernet", offsetSeconds: 1),
+            Submitted("UseAethernet", UseAethernetParams(33u), offsetSeconds: 1.5),
+            Completed("UseAethernet", "ok", offsetSeconds: 2),
+            Obs("GetPlayerZone", argument: null, value: ZoneValue(130u), offsetSeconds: 2.5),
+            Decision(null, "done", offsetSeconds: 3),
+            End("done")
+        );
+
+        var events = TraceEventParser.ReadText(jsonl);
+        var result = new TraceToQuestExtractor().Extract(events);
+
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var travel = draft.Definition.Sequences
+            .SelectMany(s => s.Steps)
+            .OfType<TravelStep>()
+            .LastOrDefault();
+        Assert.NotNull(travel);
+        // RED: compile error on .Aethernet.To until AethernetRouteHint exists
+        Assert.Equal(33u, travel!.RouteHint!.Aethernet!.To);
+        Assert.Null(travel.RouteHint.Aethernet.From);
+    }
+
+    // -------------------------------------------------------------------------
+    // Test 39 — UseAethernetParamsWithSource helper exists in TraceTestHelpers
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void TraceTestHelpers_UseAethernetParamsWithSource_ProducesExpectedShape()
+    {
+        /*
+         * RED: Will fail until Builder adds UseAethernetParamsWithSource helper to
+         * TraceTestHelpers.cs.
+         *
+         * CONTRACT: Given UseAethernetParamsWithSource(sourceShardId: 125, destinationShardId: 77),
+         *           When the element is inspected,
+         *           Then it contains both "sourceShardId":125 and "destinationShardId":77.
+         *
+         * BUILDER GUIDANCE: Add to TraceTestHelpers.cs:
+         *   internal static JsonElement UseAethernetParamsWithSource(
+         *       uint sourceShardId, uint destinationShardId)
+         *       => JsonSerializer.SerializeToElement(new { sourceShardId, destinationShardId });
+         */
+
+        // RED: UseAethernetParamsWithSource helper does not exist yet
+        var element = UseAethernetParamsWithSource(sourceShardId: 125u, destinationShardId: 77u);
+
+        Assert.True(element.TryGetProperty("sourceShardId", out var srcProp));
+        Assert.Equal(125u, srcProp.GetUInt32());
+        Assert.True(element.TryGetProperty("destinationShardId", out var dstProp));
+        Assert.Equal(77u, dstProp.GetUInt32());
     }
 }
