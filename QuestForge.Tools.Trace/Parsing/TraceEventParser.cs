@@ -85,6 +85,7 @@ public static class TraceEventParser
                 "decision" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "action.submitted" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "action.completed" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
+                "step.recorded"    => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "inventory.changed" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 _ => WarnAndSkip(warnings, $"unknown type discriminator: {typeStr}")
             };
