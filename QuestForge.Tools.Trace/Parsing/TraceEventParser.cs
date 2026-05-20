@@ -86,7 +86,6 @@ public static class TraceEventParser
                 "action.submitted" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "action.completed" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "step.recorded"    => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "inventory.changed" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 _ => WarnAndSkip(warnings, $"unknown type discriminator: {typeStr}")
             };
         }
@@ -109,11 +108,6 @@ public static class TraceEventParser
         if (root.TryGetProperty("outcome", out _) && root.TryGetProperty("runId", out _)
             && !root.TryGetProperty("actionType", out _))
             return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.RunEndEvent);
-
-        // InventoryChangedEvent heuristic: has both "gained" and "lost" keys.
-        // Must come AFTER RunStartEvent check (RunStartEvent has "questId"/"questSchemaId", not "gained"/"lost").
-        if (root.TryGetProperty("gained", out _) && root.TryGetProperty("lost", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.InventoryChangedEvent);
 
         if (root.TryGetProperty("method", out _))
             return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ObservationEvent);

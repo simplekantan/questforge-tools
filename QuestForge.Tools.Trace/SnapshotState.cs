@@ -165,41 +165,71 @@ public sealed class SnapshotState
                 return true;
             }
 
+            case "InventoryChanged":
+            {
+                // Value shape: {"gained":[{"itemId":N,"qty":N}],"lost":[...],"newHash":N}
+                if (!ev.Value.HasValue) return true;
+                var root = ev.Value.Value;
+                if (root.ValueKind != JsonValueKind.Object) return true;
+
+                if (root.TryGetProperty("gained", out var gainedArr)
+                    && gainedArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in gainedArr.EnumerateArray())
+                    {
+                        if (!item.TryGetProperty("itemId", out var idEl)) continue;
+                        if (!item.TryGetProperty("qty", out var qtyEl)) continue;
+                        try
+                        {
+                            var id  = idEl.GetUInt32();
+                            var qty = qtyEl.GetInt32();
+                            _keyItemCounts.TryGetValue(id, out var current);
+                            _keyItemCounts[id] = current + qty;
+                            (_pendingKeyItemsAdded ??= []).Add(id);
+                        }
+                        catch { /* guard */ }
+                    }
+                }
+
+                if (root.TryGetProperty("lost", out var lostArr)
+                    && lostArr.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var item in lostArr.EnumerateArray())
+                    {
+                        if (!item.TryGetProperty("itemId", out var idEl)) continue;
+                        if (!item.TryGetProperty("qty", out var qtyEl)) continue;
+                        try
+                        {
+                            var id  = idEl.GetUInt32();
+                            var qty = qtyEl.GetInt32();
+                            _keyItemCounts.TryGetValue(id, out var current);
+                            var newQty = current - qty;
+                            if (newQty <= 0)
+                                _keyItemCounts.Remove(id);
+                            else
+                                _keyItemCounts[id] = newQty;
+                            (_pendingKeyItemsRemoved ??= []).Add(id);
+                        }
+                        catch { /* guard */ }
+                    }
+                }
+
+                if (root.TryGetProperty("newHash", out var hashEl))
+                    try { _lastInventoryHash = hashEl.GetUInt32(); } catch { }
+
+                return true;
+            }
+
             default:
                 return false;
         }
     }
 
     /// <summary>
-    /// Apply an <see cref="InventoryChangedEvent"/> to accumulated key-item counts.
-    /// Updates pending delta lists for the next ToSnapshot call.
+    /// Convenience alias used by test helpers — applies an ObservationEvent with
+    /// Method="InventoryChanged" to accumulated key-item counts.
     /// </summary>
-    public bool Apply(InventoryChangedEvent ev)
-    {
-        foreach (var item in ev.Gained)
-        {
-            _keyItemCounts.TryGetValue(item.ItemId, out var current);
-            _keyItemCounts[item.ItemId] = current + item.Qty;
-            (_pendingKeyItemsAdded ??= []).Add(item.ItemId);
-        }
-
-        foreach (var item in ev.Lost)
-        {
-            _keyItemCounts.TryGetValue(item.ItemId, out var current);
-            var newQty = current - item.Qty;
-            if (newQty <= 0)
-                _keyItemCounts.Remove(item.ItemId);
-            else
-                _keyItemCounts[item.ItemId] = newQty;
-            (_pendingKeyItemsRemoved ??= []).Add(item.ItemId);
-        }
-
-        _lastInventoryHash = ev.NewHash;
-        return true;
-    }
-
-    /// <summary>Convenience alias used by test helpers.</summary>
-    public void ApplyInventoryChanged(InventoryChangedEvent ev) => Apply(ev);
+    public void ApplyInventoryChanged(ObservationEvent ev) => Apply(ev);
 
     /// <summary>
     /// Clear pending delta lists so the next decision's "after" snapshot sees a clean slate.

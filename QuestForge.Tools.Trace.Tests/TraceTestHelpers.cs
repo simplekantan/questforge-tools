@@ -108,21 +108,28 @@ internal static class TraceTestHelpers
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Builds an <see cref="InventoryChangedEvent"/> for use in parity tests.
+    /// Builds an <see cref="ObservationEvent"/> with Method="InventoryChanged" for use in tests.
+    /// The value shape is {"gained":[{"itemId":N,"qty":N}],"lost":[...],"newHash":N}.
     /// <paramref name="gained"/> and <paramref name="lost"/> default to empty arrays.
     /// </summary>
-    internal static InventoryChangedEvent InventoryChanged(
+    internal static ObservationEvent InventoryChanged(
         (uint id, int qty)[]? gained = null,
         (uint id, int qty)[]? lost   = null,
         uint newHash = 1u,
         string runId = "aaa",
         double offsetSeconds = 2.0)
-        => new(
-            RunId:   runId,
-            Gained:  (gained ?? []).Select(t => new KeyItemDelta(t.id, t.qty)).ToArray(),
-            Lost:    (lost   ?? []).Select(t => new KeyItemDelta(t.id, t.qty)).ToArray(),
-            NewHash: newHash,
-            At:      T0.AddSeconds(offsetSeconds));
+    {
+        var gainedArr = (gained ?? []).Select(t => new { itemId = t.id, qty = t.qty }).ToArray();
+        var lostArr   = (lost   ?? []).Select(t => new { itemId = t.id, qty = t.qty }).ToArray();
+        var value = JsonSerializer.SerializeToElement(
+            new { gained = gainedArr, lost = lostArr, newHash });
+        return new ObservationEvent(
+            RunId:    runId,
+            Method:   "InventoryChanged",
+            Argument: null,
+            Value:    value,
+            At:       T0.AddSeconds(offsetSeconds));
+    }
 
     /// <summary>
     /// Builds the Parameters JsonElement for a HandOver action.

@@ -160,26 +160,18 @@ public sealed class TraceEventParserTests
     }
 
     // -------------------------------------------------------------------------
-    // Test 1: InventoryChangedEvent with discriminator round-trips correctly
+    // Test 1: InventoryChanged ObservationEvent with discriminator round-trips correctly
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void ReadText_InventoryChangedWithDiscriminator_ParsesCorrectly()
+    public void ReadText_InventoryChangedObservation_WithDiscriminator_ParsesCorrectly()
     {
         /*
-         * RED: Will fail until Builder adds "inventory.changed" case to TraceEventParser
-         * and wires InventoryChangedEvent into DetectAndDeserialize.
-         *
-         * CONTRACT: Given a JSONL line with {"type":"inventory.changed",...} containing
-         *           Gained=[{ItemId:101,Qty:1}], Lost=[], NewHash=42, RunId="r1",
+         * CONTRACT: Given a JSONL line with {"type":"observation","method":"InventoryChanged",...}
+         *           containing gained=[{itemId:101,qty:1}], lost=[], newHash:42, runId="r1",
          *           When  ReadText,
-         *           Then  result contains exactly 1 InventoryChangedEvent with:
-         *                 Gained[0].ItemId == 101, Gained[0].Qty == 1,
-         *                 Lost.Count == 0, NewHash == 42u, RunId == "r1".
-         *
-         * BUILDER GUIDANCE:
-         *   - Add "inventory.changed" to the discriminator switch in ParseLine.
-         *   - Deserialize to TraceEventJsonContext.Default.InventoryChangedEvent (or TraceEvent).
+         *           Then  result contains exactly 1 ObservationEvent with Method="InventoryChanged"
+         *                 and Value containing gained array and newHash.
          */
 
         // Arrange
@@ -191,9 +183,8 @@ public sealed class TraceEventParserTests
             offsetSeconds: 5.0);
 
         var opts = TraceEventJsonContext.Default.Options;
-        // Serialize with the polymorphic context so the "type" discriminator is included.
         var line = JsonSerializer.Serialize<TraceEvent>(ev, opts);
-        Assert.Contains("\"type\"", line); // guard: ensure discriminator is present
+        Assert.Contains("\"type\"", line); // guard: discriminator present
 
         var warnings = new StringWriter();
 
@@ -202,35 +193,30 @@ public sealed class TraceEventParserTests
 
         // Assert
         Assert.Single(events);
-        var parsed = Assert.IsType<InventoryChangedEvent>(events[0]);
-        Assert.Equal("r1",   parsed.RunId);
-        Assert.Equal(42u,    parsed.NewHash);
-        Assert.Single(parsed.Gained);
-        Assert.Equal(101u,   parsed.Gained[0].ItemId);
-        Assert.Equal(1,      parsed.Gained[0].Qty);
-        Assert.Empty(parsed.Lost);
+        var parsed = Assert.IsType<ObservationEvent>(events[0]);
+        Assert.Equal("InventoryChanged", parsed.Method);
+        Assert.Equal("r1", parsed.RunId);
+        Assert.True(parsed.Value.HasValue);
+        var gained = parsed.Value!.Value.GetProperty("gained").EnumerateArray().ToList();
+        Assert.Single(gained);
+        Assert.Equal(101u, gained[0].GetProperty("itemId").GetUInt32());
+        Assert.Equal(1, gained[0].GetProperty("qty").GetInt32());
+        Assert.Equal(42u, parsed.Value.Value.GetProperty("newHash").GetUInt32());
     }
 
     // -------------------------------------------------------------------------
-    // Test 2: InventoryChangedEvent without discriminator still parses (heuristic fallback)
+    // Test 2: InventoryChanged ObservationEvent without discriminator parses via heuristic
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void ReadText_InventoryChangedHeuristicFallback_NoDiscriminator_StillParses()
+    public void ReadText_InventoryChangedObservation_NoDiscriminator_StillParses()
     {
         /*
-         * RED: Will fail until Builder adds InventoryChangedEvent detection to
-         * DetectAndDeserialize (the heuristic branch used by test helpers).
-         *
-         * CONTRACT: Given a JSONL line serialised via the concrete type (no "type" field),
+         * CONTRACT: Given a JSONL line for an ObservationEvent serialised via the concrete
+         *           type (no "type" field in JSON — only "method" present),
          *           When  ReadText,
-         *           Then  result contains exactly 1 InventoryChangedEvent.
-         *                 Gained, Lost, NewHash, RunId must round-trip correctly.
-         *
-         * BUILDER GUIDANCE:
-         *   - In DetectAndDeserialize, add a heuristic: if root has "gained" and "lost"
-         *     and "newHash", deserialize to InventoryChangedEvent.
-         *   - The heuristic must be tested separately from the discriminator path.
+         *           Then  result contains exactly 1 ObservationEvent with Method="InventoryChanged"
+         *                 and correct Value fields.
          */
 
         // Arrange — serialize via concrete type (skips [JsonPolymorphic] discriminator).
@@ -243,7 +229,7 @@ public sealed class TraceEventParserTests
 
         var opts = TraceEventJsonContext.Default.Options;
         var line = JsonSerializer.Serialize(ev, ev.GetType(), opts);
-        Assert.DoesNotContain("\"type\"", line); // guard: ensure NO discriminator
+        Assert.DoesNotContain("\"type\"", line); // guard: no discriminator
 
         var warnings = new StringWriter();
 
@@ -252,34 +238,29 @@ public sealed class TraceEventParserTests
 
         // Assert
         Assert.Single(events);
-        var parsed = Assert.IsType<InventoryChangedEvent>(events[0]);
-        Assert.Equal("r2",   parsed.RunId);
-        Assert.Equal(99u,    parsed.NewHash);
-        Assert.Single(parsed.Gained);
-        Assert.Equal(202u,   parsed.Gained[0].ItemId);
-        Assert.Equal(2,      parsed.Gained[0].Qty);
-        Assert.Single(parsed.Lost);
-        Assert.Equal(303u,   parsed.Lost[0].ItemId);
+        var parsed = Assert.IsType<ObservationEvent>(events[0]);
+        Assert.Equal("InventoryChanged", parsed.Method);
+        Assert.Equal("r2", parsed.RunId);
+        Assert.True(parsed.Value.HasValue);
+        var gained = parsed.Value!.Value.GetProperty("gained").EnumerateArray().ToList();
+        Assert.Single(gained);
+        Assert.Equal(202u, gained[0].GetProperty("itemId").GetUInt32());
+        Assert.Equal(2, gained[0].GetProperty("qty").GetInt32());
+        Assert.Equal(99u, parsed.Value.Value.GetProperty("newHash").GetUInt32());
     }
 
     // -------------------------------------------------------------------------
-    // Test 3: InventoryChangedEvent with empty arrays and NewHash=0
+    // Test 3: InventoryChanged ObservationEvent with empty arrays and NewHash=0
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void ReadText_InventoryChanged_EmptyArrays_ParsesCorrectly()
+    public void ReadText_InventoryChangedObservation_EmptyArrays_ParsesCorrectly()
     {
         /*
-         * RED: Will fail until Builder wires InventoryChangedEvent parsing.
-         *
-         * CONTRACT: Given an InventoryChangedEvent with empty Gained/Lost arrays
-         *           and NewHash == 0,
-         *           When  ReadText (discriminator present),
-         *           Then  parsed event has Gained.Count == 0, Lost.Count == 0,
-         *                 NewHash == 0u.
-         *
-         * BUILDER GUIDANCE:
-         *   - Empty arrays in JSON ("gained":[], "lost":[]) must not throw or produce nulls.
+         * CONTRACT: Given an InventoryChanged ObservationEvent with empty gained/lost arrays
+         *           and newHash == 0,
+         *           When  ReadText,
+         *           Then  parsed ObservationEvent has empty gained and lost arrays in Value.
          */
 
         // Arrange
@@ -298,31 +279,25 @@ public sealed class TraceEventParserTests
 
         // Assert
         Assert.Single(events);
-        var parsed = Assert.IsType<InventoryChangedEvent>(events[0]);
-        Assert.Empty(parsed.Gained);
-        Assert.Empty(parsed.Lost);
-        Assert.Equal(0u, parsed.NewHash);
+        var parsed = Assert.IsType<ObservationEvent>(events[0]);
+        Assert.Equal("InventoryChanged", parsed.Method);
+        Assert.True(parsed.Value.HasValue);
+        Assert.Empty(parsed.Value!.Value.GetProperty("gained").EnumerateArray());
+        Assert.Empty(parsed.Value.Value.GetProperty("lost").EnumerateArray());
+        Assert.Equal(0u, parsed.Value.Value.GetProperty("newHash").GetUInt32());
     }
 
     // -------------------------------------------------------------------------
-    // Test 4: Regression guard — RunStartEvent still parses after inventory case added
+    // Test 4: Regression guard — RunStartEvent still parses correctly
     // -------------------------------------------------------------------------
 
     [Fact]
-    public void ReadText_RunStartStillParsesAfterInventoryAdded_RegressionGuard()
+    public void ReadText_RunStartStillParsesCorrectly_RegressionGuard()
     {
         /*
-         * RED: Will fail until Builder implements the inventory case without breaking
-         * existing heuristic dispatch for RunStartEvent.
-         *
          * CONTRACT: Given a JSONL string with a RunStart event (no discriminator, via
          *           MakeTrace helper), the heuristic DetectAndDeserialize must still
-         *           return a RunStartEvent — the new InventoryChangedEvent heuristic
-         *           must not accidentally intercept it.
-         *
-         * BUILDER GUIDANCE:
-         *   - Place the InventoryChangedEvent heuristic check AFTER the RunStartEvent check
-         *     in DetectAndDeserialize (RunStartEvent has both "questId" and "questSchemaId").
+         *           return a RunStartEvent.
          */
 
         // Arrange — MakeTrace uses concrete-type serialization (no discriminator).

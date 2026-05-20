@@ -53,8 +53,8 @@ public sealed class TraceToQuestExtractorIntegrationTests
         // Arrange — build the synthetic trace event by event
         var opts = TraceEventJsonContext.Default.Options;
 
-        // Helper: serialize InventoryChangedEvent with the discriminator.
-        string SerializeInventory(InventoryChangedEvent ev)
+        // Helper: serialize InventoryChanged ObservationEvent with the discriminator.
+        string SerializeInventory(ObservationEvent ev)
             => JsonSerializer.Serialize<TraceEvent>(ev, opts);
 
         // Core trace parts using MakeTrace (no discriminator) + manual inventory lines.

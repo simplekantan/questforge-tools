@@ -78,8 +78,6 @@ public sealed class TraceToQuestExtractor
         {
             if (events[i] is ObservationEvent obs)
                 snapshot.Apply(obs);
-            else if (events[i] is InventoryChangedEvent inv)
-                snapshot.Apply(inv);
         }
 
         // Step 4: index all decisions in order (matching runId)
@@ -161,22 +159,21 @@ public sealed class TraceToQuestExtractor
                     snapshot.RecordInteract(new NpcId(npcId));
             }
 
-            // e. Advance snapshot: apply ObservationEvents and InventoryChangedEvents between
-            //    completed (exclusive) and next decision (exclusive)
+            // e. Advance snapshot: apply ObservationEvents between completed (exclusive)
+            //    and next decision (exclusive)
             int advanceStart = completedIdx >= 0 ? completedIdx + 1 : (submittedIdx + 1);
             int advanceEnd = (i + 1 < decisions.Count) ? decisions[i + 1].EventIndex : events.Count;
 
-            // Collect InventoryChangedEvents in this window for HandOver fallback
-            var inventoryChangedInWindow = new List<InventoryChangedEvent>();
+            // Collect ObservationEvents with Method="InventoryChanged" in this window for HandOver fallback
+            var inventoryChangedInWindow = new List<ObservationEvent>();
 
             for (int j = advanceStart; j < advanceEnd; j++)
             {
                 if (events[j] is ObservationEvent obs)
-                    snapshot.Apply(obs);
-                else if (events[j] is InventoryChangedEvent inv)
                 {
-                    snapshot.Apply(inv);
-                    inventoryChangedInWindow.Add(inv);
+                    snapshot.Apply(obs);
+                    if (obs.Method == "InventoryChanged")
+                        inventoryChangedInWindow.Add(obs);
                 }
             }
 
@@ -371,14 +368,22 @@ public sealed class TraceToQuestExtractor
                     }
                 }
 
-                // Fallback: collect Lost item IDs from InventoryChangedEvents in window
+                // Fallback: collect Lost item IDs from InventoryChanged ObservationEvents in window
                 if (itemIds.Length == 0 && inventoryChangedInWindow.Count > 0)
                 {
                     var fromInventory = new List<uint>();
                     foreach (var inv in inventoryChangedInWindow)
                     {
-                        foreach (var lost in inv.Lost)
-                            fromInventory.Add(lost.ItemId);
+                        if (!inv.Value.HasValue) continue;
+                        var root = inv.Value.Value;
+                        if (root.ValueKind != JsonValueKind.Object) continue;
+                        if (!root.TryGetProperty("lost", out var lostArr)) continue;
+                        if (lostArr.ValueKind != JsonValueKind.Array) continue;
+                        foreach (var item in lostArr.EnumerateArray())
+                        {
+                            if (item.TryGetProperty("itemId", out var idEl))
+                                try { fromInventory.Add(idEl.GetUInt32()); } catch { }
+                        }
                     }
                     itemIds = fromInventory.ToArray();
                 }
