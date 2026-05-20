@@ -22,6 +22,10 @@ public sealed class TraceToQuestExtractor
     /// Extract a quest draft from the supplied event list.
     /// Returns <see cref="Result{T}.Failure"/> with code <c>"no-run-start"</c> when no
     /// <see cref="RunStartEvent"/> is present.
+    ///
+    /// Fast path: if <see cref="StepRecordedEvent"/> entries are present (authoring trace),
+    /// the quest definition is reconstructed directly from those events without observation
+    /// correlation. Falls back to the observation-based algorithm when none are present.
     /// </summary>
     public Result<QuestDraftResult> Extract(IReadOnlyList<TraceEvent> events)
     {
@@ -32,6 +36,17 @@ public sealed class TraceToQuestExtractor
 
         var runId = runStart.RunId;
         var activeQuest = new QuestId(runStart.QuestId);
+
+        // Fast path: authoring traces carry StepRecordedEvent entries which contain the
+        // full serialised Step. Use those directly — no observation correlation needed.
+        var stepRecordedEvents = events
+            .OfType<StepRecordedEvent>()
+            .Where(e => e.RunId == runId)
+            .OrderBy(e => e.At)
+            .ToList();
+
+        if (stepRecordedEvents.Count > 0)
+            return ExtractFromStepRecordedEvents(runStart, stepRecordedEvents);
 
         // Step 2: initialise SnapshotState
         var snapshot = new SnapshotState(activeQuest);
@@ -484,6 +499,97 @@ public sealed class TraceToQuestExtractor
 
         if (hasAcceptStepWithUnknownPosition)
             todos.Add("acceptFrom NPC position");
+
+        var definition = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = runStart.QuestId,
+            Name              = "TODO",
+            Expansion         = "TODO",
+            Category          = "TODO",
+            Enabled           = true,
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "TODO",
+            Requirements      = new Requirements(),
+            AcceptFrom        = acceptFrom,
+            Sequences         = sequences.ToArray()
+        };
+
+        return Result.Ok(new QuestDraftResult(definition, todos));
+    }
+
+    // ────────────────────────────────────────────────────────────────────────
+    // Fast path: reconstruct from StepRecordedEvent entries (authoring traces)
+    // ────────────────────────────────────────────────────────────────────────
+
+    private static Result<QuestDraftResult> ExtractFromStepRecordedEvents(
+        RunStartEvent runStart,
+        List<StepRecordedEvent> stepRecordedEvents)
+    {
+        // Deserialise each Step from the embedded JSON element using quest file options.
+        var workingList = new List<(int GroupKey, Step Step)>();
+        var todos = new List<string>();
+
+        foreach (var evt in stepRecordedEvents)
+        {
+            Step? step = null;
+            try
+            {
+                step = evt.Step.Deserialize<Step>(QuestForgeJsonContext.QuestFileOptions);
+            }
+            catch
+            {
+                todos.Add($"TODO: could not deserialise step '{evt.StepId}' at sequence {evt.SequenceNumber}; manual edit required");
+                continue;
+            }
+
+            if (step is null)
+            {
+                todos.Add($"TODO: step '{evt.StepId}' at sequence {evt.SequenceNumber} deserialised as null; manual edit required");
+                continue;
+            }
+
+            workingList.Add((evt.SequenceNumber, step));
+        }
+
+        // Group by SequenceNumber preserving insertion order.
+        var sequences = new List<QuestSequence>();
+        if (workingList.Count > 0)
+        {
+            var currentKey   = workingList[0].GroupKey;
+            var currentSteps = new List<Step>();
+
+            foreach (var (key, s) in workingList)
+            {
+                if (key != currentKey)
+                {
+                    sequences.Add(new QuestSequence { Sequence = currentKey, Steps = currentSteps.ToArray() });
+                    currentKey   = key;
+                    currentSteps = [];
+                }
+                currentSteps.Add(s);
+            }
+            sequences.Add(new QuestSequence { Sequence = currentKey, Steps = currentSteps.ToArray() });
+        }
+
+        // Find acceptFrom from first AcceptStep.
+        NpcLocation? acceptFrom = null;
+        foreach (var (_, s) in workingList)
+        {
+            if (s is AcceptStep acceptStep)
+            {
+                acceptFrom = acceptStep.Target;
+                break;
+            }
+        }
+        acceptFrom ??= new NpcLocation(0u, 0, new Position3(0, 0, 0));
+
+        // Standard TODOs for fields that cannot be inferred from the trace.
+        todos.Insert(0, "name (Lumina lookup required)");
+        todos.Insert(1, "expansion");
+        todos.Insert(2, "category");
+        todos.Insert(3, "lastVerifiedPatch");
+        todos.Insert(4, "requirements (level, job, prereqs)");
 
         var definition = new QuestDefinition
         {
