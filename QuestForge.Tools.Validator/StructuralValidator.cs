@@ -29,7 +29,15 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         ValidateNotesLength(quest, ctx, errors);
         ValidateRouteHints(quest, ctx, errors);
         ValidateRequiredZone(quest, ctx, errors);
+        ValidateResumePoint(quest, ctx, errors);
 
+        return errors;
+    }
+
+    public IEnumerable<ValidationError> ValidateFragmentDefinition(FragmentDefinition fragment, ValidationContext ctx)
+    {
+        var errors = new List<ValidationError>();
+        CheckResumePointInFragment(fragment.Steps, fragment, ctx, errors);
         return errors;
     }
 
@@ -627,6 +635,76 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                     var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
                     CheckRequiredZone(branch.Branches[i].Steps ?? [], inner, ctx, errors);
                 }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // ResumePoint validation (R1)
+    // -------------------------------------------------------------------------
+
+    private static void ValidateResumePoint(
+        QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var seq in quest.Sequences)
+            CheckResumePoint(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
+    }
+
+    private static void CheckResumePoint(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step.ResumePointFragmentId is { } id && string.IsNullOrWhiteSpace(id))
+            {
+                errors.Add(E(ctx, "structural/resume-point-fragment-id-empty", scope.ToString(),
+                    $"Step '{step.Id}': ResumePointFragmentId, when set, must be a non-empty, non-whitespace string.",
+                    stepId: step.Id, severity: Severity.Error));
+            }
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckResumePoint(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                }
+        }
+    }
+
+    private static void CheckResumePointInFragment(
+        Step[] steps, FragmentDefinition fragment, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            var r2Fired = false;
+
+            // R2: any presence of ResumePointFragmentId inside a fragment is an error
+            if (step.ResumePointFragmentId is not null)
+            {
+                r2Fired = true;
+                errors.Add(E(ctx, "structural/resume-point-nested", "fragment",
+                    $"Fragment '{fragment.FragmentId}' step '{step.Id}': fragments may not declare ResumePointFragmentId (resume positioning is depth-1 only; nested resumes are not supported).",
+                    stepId: step.Id, severity: Severity.Error));
+
+                // R1 in fragment context: also check if the value is empty/whitespace
+                if (string.IsNullOrWhiteSpace(step.ResumePointFragmentId))
+                {
+                    errors.Add(E(ctx, "structural/resume-point-fragment-id-empty", "fragment",
+                        $"Step '{step.Id}': ResumePointFragmentId, when set, must be a non-empty, non-whitespace string.",
+                        stepId: step.Id, severity: Severity.Error));
+                }
+            }
+
+            // R3: fragment step IDs should start with "fragment-" — suppressed when R2 fired
+            if (!r2Fired && !step.Id.StartsWith("fragment-", StringComparison.Ordinal))
+            {
+                errors.Add(E(ctx, "structural/fragment-step-id-convention", "fragment",
+                    $"Fragment '{fragment.FragmentId}' step '{step.Id}': fragment step IDs should follow the 'fragment-*' naming convention.",
+                    stepId: step.Id, severity: Severity.Warning));
+            }
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                    CheckResumePointInFragment(branch.Branches[i].Steps ?? [], fragment, ctx, errors);
         }
     }
 
