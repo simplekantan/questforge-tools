@@ -28,6 +28,7 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         ValidateStepTypeRules(quest, ctx, errors);
         ValidateNotesLength(quest, ctx, errors);
         ValidateRouteHints(quest, ctx, errors);
+        ValidateRequiredZone(quest, ctx, errors);
 
         return errors;
     }
@@ -592,6 +593,39 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                 {
                     var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
                     CheckRouteHints(branch.Branches[i].Steps ?? [], inner, ctx, errors);
+                }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // RequiredZone validation
+    // -------------------------------------------------------------------------
+
+    private static void ValidateRequiredZone(
+        QuestDefinition quest, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var seq in quest.Sequences)
+            CheckRequiredZone(seq.Steps, new ValidationScope(seq.Sequence), ctx, errors);
+    }
+
+    private static void CheckRequiredZone(
+        Step[] steps, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        foreach (var step in steps)
+        {
+            if (step.RequiredZone is { } rz && rz.Length > 0
+                && !uint.TryParse(rz, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out _))
+            {
+                errors.Add(E(ctx, "structural/required-zone-not-numeric", scope.ToString(),
+                    $"Step '{step.Id}': RequiredZone must be a numeric zone ID string (e.g. \"128\"), but was \"{rz}\".",
+                    stepId: step.Id, severity: Severity.Error));
+            }
+
+            if (step is BranchStep branch)
+                for (var i = 0; i < branch.Branches.Length; i++)
+                {
+                    var inner = scope with { BranchStepId = branch.Id, BranchCaseIndex = i };
+                    CheckRequiredZone(branch.Branches[i].Steps ?? [], inner, ctx, errors);
                 }
         }
     }
