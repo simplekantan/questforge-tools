@@ -11,7 +11,7 @@ public static class CliArgsParser
     // Boolean flags (no following token)
     private static readonly HashSet<string> BoolFlags = new(StringComparer.Ordinal)
     {
-        "--stdout", "--fail-on-warning",
+        "--stdout", "--fail-on-warning", "--with-trace", "--no-trace",
     };
 
     public static CliArgs Parse(string[] args)
@@ -47,6 +47,7 @@ public static class CliArgsParser
         string  format         = "text";
         string? parseError     = null;
         bool    positionalSeen = false;
+        bool    withTrace      = true; // default ON for extract-fixture
 
         int i = 1;
         while (i < args.Length)
@@ -76,8 +77,10 @@ public static class CliArgsParser
                 {
                     switch (token)
                     {
-                        case "--stdout":         stdout        = true; break;
-                        case "--fail-on-warning": failOnWarning = true; break;
+                        case "--stdout":         stdout        = true;  break;
+                        case "--fail-on-warning": failOnWarning = true;  break;
+                        case "--with-trace":     withTrace     = true;  break;
+                        case "--no-trace":       withTrace     = false; break;
                     }
                     i++;
                 }
@@ -117,7 +120,8 @@ public static class CliArgsParser
             FailOnWarning: failOnWarning,
             Format:        format,
             UnknownToken:  null,
-            ParseError:    parseError);
+            ParseError:    parseError,
+            WithTrace:     withTrace);
     }
 
     private static CliArgs Default(CliSubcommand subcommand) =>

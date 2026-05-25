@@ -10,4 +10,5 @@ public sealed record CliArgs(
     bool FailOnWarning,
     string Format,
     string? UnknownToken,
-    string? ParseError);
+    string? ParseError,
+    bool WithTrace = true);

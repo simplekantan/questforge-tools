@@ -1,4 +1,5 @@
 using System.Text.Json;
+using QuestForge.Adapters.Tracing;
 using QuestForge.Adapters.Types;
 using QuestForge.Schema;
 using QuestForge.Tools.Trace.Cli;
@@ -100,6 +101,27 @@ internal static class Program
         var outputPath = cliArgs.OutputPath ?? extractor.SuggestFilename(fixture);
         File.WriteAllText(outputPath, json);
         Console.Out.WriteLine($"Written to {outputPath}");
+
+        if (cliArgs.WithTrace)
+        {
+            var runEvents = TraceToFixtureExtractor.FilterToFixtureRun(events);
+            if (runEvents.Count == 0)
+            {
+                Console.Error.WriteLine("qf-trace: no run.start found; skipping trace co-emit");
+            }
+            else
+            {
+                var basename = outputPath.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                    ? outputPath[..^5]
+                    : outputPath;
+                var tracePath = basename + ".trace.jsonl";
+                using var writer = new StreamWriter(tracePath, append: false, encoding: System.Text.Encoding.UTF8);
+                foreach (var ev in runEvents)
+                    writer.WriteLine(JsonSerializer.Serialize(ev, TraceEventJsonContext.Default.TraceEvent));
+                Console.Out.WriteLine($"Written to {tracePath}");
+            }
+        }
+
         Console.Out.WriteLine();
         Console.Out.WriteLine("TODO: edit the 'description' field before committing.");
         return 0;
