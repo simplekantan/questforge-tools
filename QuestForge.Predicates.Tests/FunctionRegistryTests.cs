@@ -5,10 +5,67 @@ namespace QuestForge.Predicates.Tests;
 public class FunctionRegistryTests
 {
     [Fact]
-    public void All_Contains28Functions()
+    public void All_Contains29Functions()
     {
-        // Updated from 27 to 28 for Phase 11B: isAttuned added.
-        Assert.Equal(28, FunctionRegistry.All.Count);
+        // Updated from 28 to 29: questVariable added.
+        // RED: fails until Builder adds the questVariable entry to FunctionRegistry.
+        Assert.Equal(29, FunctionRegistry.All.Count);
+    }
+
+    // =========================================================================
+    // questVariable registry tests (RG1-RG3 from QUEST_VARIABLE_PREDICATE_PLAN.md)
+    // =========================================================================
+
+    [Fact]
+    public void QuestVariable_Signature_IsCorrect()
+    {
+        /*
+         * RED: Will fail until Builder adds the questVariable entry.
+         *
+         * CONTRACT (RG1): Given FunctionRegistry.TryGet("questVariable", out var sig),
+         *                 Then found == true,
+         *                      sig.Name == "questVariable",
+         *                      sig.Arity is Fixed(2),
+         *                      sig.ParameterTypes == [Int, Int],
+         *                      sig.ReturnType == Int.
+         *
+         * BUILDER GUIDANCE: new("questVariable", new Fixed(2), [Int, Int], Int)
+         *   — two Int parameters (questId, index), returns Int (the byte value widened).
+         */
+
+        // Act
+        var found = FunctionRegistry.TryGet("questVariable", out var sig);
+
+        // Assert
+        Assert.True(found, "questVariable should be registered in FunctionRegistry");
+        Assert.Equal("questVariable", sig.Name);
+        var fixed2 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(2, fixed2.Count);
+        Assert.Equal(2, sig.ParameterTypes.Count);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[1]);
+        Assert.Equal(PredicateType.Int, sig.ReturnType);
+    }
+
+    [Fact]
+    public void QuestVariable_SuggestSimilar_SuggestsForTypo()
+    {
+        /*
+         * RED: Will fail until Builder adds the questVariable entry.
+         *
+         * CONTRACT (RG3): Given the typo "questVaraible" (transposed 'i' and 'a'),
+         *                 When FunctionRegistry.SuggestSimilar("questVaraible"),
+         *                 Then the result contains "questVariable".
+         *
+         * BUILDER GUIDANCE: Levenshtein distance between "questVaraible" and "questVariable"
+         *   is 2, which is <= the default maxDistance of 2.
+         */
+
+        // Act
+        var suggestions = FunctionRegistry.SuggestSimilar("questVaraible");
+
+        // Assert
+        Assert.Contains("questVariable", suggestions);
     }
 
     [Fact]
