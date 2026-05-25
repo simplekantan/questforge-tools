@@ -371,6 +371,96 @@ public class ParserTests
         Assert.IsType<PredicateAst.FunctionCall>(result.Ast);
     }
 
+    // =========================================================================
+    // questVariable parser tests (PA1-PA3 from QUEST_VARIABLE_PREDICATE_PLAN.md)
+    // No parser change is needed — parsing follows from the registry (D2).
+    // These tests pin that the parser accepts questVariable once the registry
+    // entry exists, and that range checking is a semantic (checker) concern only.
+    // =========================================================================
+
+    [Fact]
+    public void QuestVariable_ParsesToFunctionCall()
+    {
+        /*
+         * RED: Will fail until Builder adds the questVariable registry entry.
+         *      The parser currently reports an unknown-function parse error for unregistered names.
+         *
+         * CONTRACT (PA1): Given "questVariable(66104, 0)",
+         *                 When PredicateParser.Parse is called,
+         *                 Then IsSuccess == true
+         *                      Ast is FunctionCall("questVariable", [IntLiteral(66104), IntLiteral(0)]).
+         *
+         * BUILDER GUIDANCE: Add new("questVariable", new Fixed(2), [Int, Int], Int) to
+         *   FunctionRegistry.cs. No Parser.cs change is required.
+         */
+
+        // Act
+        var result = PredicateParser.Parse("questVariable(66104, 0)");
+
+        // Assert
+        Assert.True(result.IsSuccess, FormatErrors(result));
+        var call = Assert.IsType<PredicateAst.FunctionCall>(result.Ast);
+        Assert.Equal("questVariable", call.Name);
+        Assert.Equal(2, call.Args.Count);
+        Assert.Equal(new PredicateAst.IntLiteral(66104L), call.Args[0]);
+        Assert.Equal(new PredicateAst.IntLiteral(0L), call.Args[1]);
+    }
+
+    [Fact]
+    public void QuestVariable_ComposesWithComparison()
+    {
+        /*
+         * RED: Will fail until Builder adds the questVariable registry entry.
+         *
+         * CONTRACT (PA2): Given "questVariable(66104, 0) >= 3",
+         *                 When parsed,
+         *                 Then Ast is Comparison(FunctionCall("questVariable", [IntLiteral(66104), IntLiteral(0)]),
+         *                                        GtEq, IntLiteral(3)).
+         *                 Confirms it composes with comparison exactly like questSequence.
+         */
+
+        // Act
+        var result = PredicateParser.Parse("questVariable(66104, 0) >= 3");
+
+        // Assert
+        Assert.True(result.IsSuccess, FormatErrors(result));
+        var cmp = Assert.IsType<PredicateAst.Comparison>(result.Ast);
+        Assert.Equal(ComparisonOp.GtEq, cmp.Op);
+        var call = Assert.IsType<PredicateAst.FunctionCall>(cmp.Left);
+        Assert.Equal("questVariable", call.Name);
+        Assert.Equal(2, call.Args.Count);
+        Assert.Equal(new PredicateAst.IntLiteral(66104L), call.Args[0]);
+        Assert.Equal(new PredicateAst.IntLiteral(0L), call.Args[1]);
+        Assert.Equal(new PredicateAst.IntLiteral(3L), cmp.Right);
+    }
+
+    [Fact]
+    public void QuestVariable_OutOfRangeIndex_StillParsesSuccessfully()
+    {
+        /*
+         * RED: Will fail until Builder adds the questVariable registry entry.
+         *
+         * CONTRACT (PA3): Given "questVariable(66104, 6)" (index 6 is out-of-range),
+         *                 When parsed,
+         *                 Then IsSuccess == true — the PARSER does not range-check.
+         *                 Range validation is the checker's job (a semantic error, not syntactic).
+         *
+         * BUILDER GUIDANCE: The parser never validates argument values, only shape.
+         *   Once the registry entry exists, "questVariable(66104, 6)" parses fine.
+         *   The checker's CK4 test covers the semantic rejection of index 6.
+         */
+
+        // Act
+        var result = PredicateParser.Parse("questVariable(66104, 6)");
+
+        // Assert — parser must accept it; range is a semantic concern only
+        Assert.True(result.IsSuccess,
+            $"Parser should accept questVariable(66104, 6) even though index 6 is out-of-range. " +
+            $"Range checking belongs to the checker, not the parser. Errors: {FormatErrors(result)}");
+        var cmp_or_call = result.Ast;
+        Assert.NotNull(cmp_or_call);
+    }
+
     // ------------------------------------------------------------------ //
     // Helper
     // ------------------------------------------------------------------ //

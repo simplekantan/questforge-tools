@@ -99,6 +99,15 @@ public static class PredicateChecker
                     $"argument {i + 1} of '{call.Name}' expects {expected}, got {argType}", 0));
         }
 
+        if (call.Name == "questVariable"
+            && call.Args.Count == 2
+            && call.Args[1] is PredicateAst.IntLiteral { Value: var idx }
+            && (idx < 0 || idx > 5))
+        {
+            errors.Add(new ParseError("quest-variable-index-out-of-range",
+                $"questVariable index must be a literal in 0–5; got {idx}", 0));
+        }
+
         return sig.ReturnType;
     }
 
