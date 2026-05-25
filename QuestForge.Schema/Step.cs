@@ -87,7 +87,18 @@ public class TurnInStep : Step
 
 public class CombatStep : Step
 {
-    public CombatTarget Target { get; init; } = default!;
+    public uint[] KillEnemyDataIds { get; init; } = [];
+    public CombatSpawn Spawn { get; init; } = CombatSpawn.AutoOnEnterArea;
+    public NpcLocation? Location { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<CombatSpawn>))]
+public enum CombatSpawn
+{
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("autoOnEnterArea")]
+    AutoOnEnterArea,
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("overworldEnemies")]
+    OverworldEnemies
 }
 
 public class DutyStep : Step
