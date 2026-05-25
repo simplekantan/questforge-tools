@@ -17,11 +17,36 @@ public sealed class TraceToFixtureExtractor
     // Static lookup: sorted set of step-type capabilities → canonical filename
     private static readonly (string[] StepCaps, string Filename)[] FilenameLookup =
     [
+        // Existing five mappings (unchanged)
         (["step:talk", "step:travel"], "simple-linear-acceptance.json"),
         (["step:duty"], "with-dungeon.json"),
         (["step:branch"], "with-branching.json"),
         (["step:fragment"], "with-fragments.json"),
         (["step:spd"], "with-spd.json"),
+        // New single-shape exact-match entries
+        (["step:accept", "step:talk", "step:travel"], "with-accept.json"),
+        (["step:talk", "step:travel", "step:turn-in"], "with-turn-in.json"),
+        (["step:attune", "step:travel"], "with-attunement.json"),
+        (["step:hand-over-item", "step:talk", "step:travel"], "with-hand-over-item.json"),
+        (["step:interact-object", "step:travel"], "with-interact-object.json"),
+        (["step:pickup-item", "step:travel"], "with-pickup-item.json"),
+    ];
+
+    // Priority-ordered list of distinguishing capabilities for the multi-shape fallback (§3.7).
+    // When no exact set matches, the highest-priority cap present in the fixture determines
+    // the suggested filename.
+    private static readonly (string Cap, string Filename)[] DistinguishingCapPriority =
+    [
+        ("step:duty",           "with-dungeon.json"),
+        ("step:spd",            "with-spd.json"),
+        ("step:branch",         "with-branching.json"),
+        ("step:fragment",       "with-fragments.json"),
+        ("step:attune",         "with-attunement.json"),
+        ("step:hand-over-item", "with-hand-over-item.json"),
+        ("step:turn-in",        "with-turn-in.json"),
+        ("step:accept",         "with-accept.json"),
+        ("step:interact-object","with-interact-object.json"),
+        ("step:pickup-item",    "with-pickup-item.json"),
     ];
 
     public TraceToFixtureExtractor(string? questDataRoot = null)
@@ -68,9 +93,11 @@ public sealed class TraceToFixtureExtractor
             }
         }
 
-        // Step 5: find last RunEndEvent
-        var runEnd = events.OfType<RunEndEvent>().LastOrDefault(e => e.RunId == runId);
-        string? terminalOutcome = runEnd?.Outcome; // as-is, do not lowercase
+        // Step 5: find RunEndEvent — prefer a real engine terminal outcome ("done"/"awaitUser")
+        // over the EngineHost cleanup marker ("ended") which may follow it.
+        var runEnds = events.OfType<RunEndEvent>().Where(e => e.RunId == runId).ToList();
+        string? terminalOutcome = runEnds.FirstOrDefault(e => e.Outcome is "done" or "awaitUser")?.Outcome
+                                  ?? runEnds.LastOrDefault()?.Outcome; // do not lowercase
 
         // Step 6: resolve questFile
         string questFile;
@@ -147,8 +174,37 @@ public sealed class TraceToFixtureExtractor
     }
 
     /// <summary>
+    /// Returns only the events belonging to the first <see cref="RunStartEvent"/>'s run,
+    /// preserving document order. Events with a different or absent RunId are dropped.
+    /// Returns an empty list when <paramref name="events"/> contains no <see cref="RunStartEvent"/>.
+    /// </summary>
+    public static IReadOnlyList<TraceEvent> FilterToFixtureRun(IReadOnlyList<TraceEvent> events)
+    {
+        var runStart = events.OfType<RunStartEvent>().FirstOrDefault();
+        if (runStart == null)
+            return [];
+
+        var runId = runStart.RunId;
+        return events.Where(e => GetRunId(e) == runId).ToList();
+    }
+
+    private static string? GetRunId(TraceEvent e) => e switch
+    {
+        RunStartEvent           r => r.RunId,
+        RunEndEvent             r => r.RunId,
+        ObservationEvent        r => r.RunId,
+        DecisionEvent           r => r.RunId,
+        ActionSubmittedEvent    r => r.RunId,
+        ActionCompletedEvent    r => r.RunId,
+        StepRecordedEvent       r => r.RunId,
+        _                         => null,
+    };
+
+    /// <summary>
     /// Suggest a canonical filename for the given fixture based on the capability set it exercises.
-    /// Falls back to <c>"simple-linear-acceptance.json"</c> when no mapping is found.
+    /// First tries an exact match against FilenameLookup. When no exact match exists, falls back
+    /// to the highest-priority distinguishing capability in DistinguishingCapPriority (§3.7).
+    /// Final fallback: <c>"simple-linear-acceptance.json"</c>.
     /// </summary>
     public string SuggestFilename(FixtureModel fixture)
     {
@@ -158,9 +214,18 @@ public sealed class TraceToFixtureExtractor
             .OrderBy(c => c)
             .ToArray();
 
+        // (1) Exact match
         foreach (var (caps, filename) in FilenameLookup)
         {
             if (stepCaps.SequenceEqual(caps))
+                return filename;
+        }
+
+        // (2) Best distinguishing capability fallback
+        var stepCapsSet = new HashSet<string>(stepCaps, StringComparer.Ordinal);
+        foreach (var (cap, filename) in DistinguishingCapPriority)
+        {
+            if (stepCapsSet.Contains(cap))
                 return filename;
         }
 
