@@ -475,6 +475,87 @@ public sealed class TraceToFixtureExtractorTests
         Assert.Equal("useaethernet", fixture.ExpectedTransitions[2].ActionType);
     }
 
+    // =========================================================================
+    // Dual-RunEnd resolution (feat/fixture-replay-harness)
+    // =========================================================================
+
+    /// <summary>
+    /// T-done-then-ended (RED): engine emits "done" then EngineHost emits "ended".
+    /// Extract must prefer the real engine terminal outcome "done" over the cleanup marker.
+    /// Currently FAILS because Extract uses LastOrDefault and returns "ended".
+    /// </summary>
+    [Fact]
+    public void Extract_DoneThenEnded_PrefersDone()
+    {
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(runId: "r1"),
+            Decision("step-1", "navigate", runId: "r1", offsetSeconds: 1),
+            End(outcome: "done",   runId: "r1", offsetSeconds: 10),
+            End(outcome: "ended",  runId: "r1", offsetSeconds: 10.003)
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Equal("done", fixture.TerminalOutcome);
+    }
+
+    /// <summary>
+    /// T-awaituser-then-ended (RED): engine emits "awaitUser" then EngineHost emits "ended".
+    /// Extract must prefer the real engine terminal outcome "awaitUser" over the cleanup marker.
+    /// Currently FAILS because Extract uses LastOrDefault and returns "ended".
+    /// </summary>
+    [Fact]
+    public void Extract_AwaitUserThenEnded_PrefersAwaitUser()
+    {
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(runId: "r1"),
+            Decision("step-1", "navigate", runId: "r1", offsetSeconds: 1),
+            End(outcome: "awaitUser", runId: "r1", offsetSeconds: 10),
+            End(outcome: "ended",     runId: "r1", offsetSeconds: 10.003)
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Equal("awaitUser", fixture.TerminalOutcome);
+    }
+
+    /// <summary>
+    /// T-only-ended (regression guard): a manual stop with no done/awaitUser engine terminal.
+    /// A single "ended" event must be preserved as-is — the fix must not over-correct.
+    /// Must PASS both before and after the builder's fix.
+    /// </summary>
+    [Fact]
+    public void Extract_OnlyEnded_PreservesEnded()
+    {
+        // Arrange
+        var extractor = new TraceToFixtureExtractor();
+        var events = new TraceEvent[]
+        {
+            Start(runId: "r1"),
+            Decision("step-1", "navigate", runId: "r1", offsetSeconds: 1),
+            End(outcome: "ended", runId: "r1", offsetSeconds: 10)
+        };
+
+        // Act
+        var result = extractor.Extract(events);
+
+        // Assert
+        var fixture = Assert.IsType<Result<FixtureModel>.Success>(result).Value;
+        Assert.Equal("ended", fixture.TerminalOutcome);
+    }
+
     [Fact]
     public void SuggestFilename_TravelPlusTalk_ReturnsSimpleLinearAcceptance()
     {

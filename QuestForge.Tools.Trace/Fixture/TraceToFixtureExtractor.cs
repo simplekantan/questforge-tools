@@ -93,9 +93,11 @@ public sealed class TraceToFixtureExtractor
             }
         }
 
-        // Step 5: find last RunEndEvent
-        var runEnd = events.OfType<RunEndEvent>().LastOrDefault(e => e.RunId == runId);
-        string? terminalOutcome = runEnd?.Outcome; // as-is, do not lowercase
+        // Step 5: find RunEndEvent — prefer a real engine terminal outcome ("done"/"awaitUser")
+        // over the EngineHost cleanup marker ("ended") which may follow it.
+        var runEnds = events.OfType<RunEndEvent>().Where(e => e.RunId == runId).ToList();
+        string? terminalOutcome = runEnds.FirstOrDefault(e => e.Outcome is "done" or "awaitUser")?.Outcome
+                                  ?? runEnds.LastOrDefault()?.Outcome; // do not lowercase
 
         // Step 6: resolve questFile
         string questFile;
