@@ -432,6 +432,21 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                             stepId: step.Id));
                     break;
 
+                case CombatStep combat:
+                    if (combat.Spawn == CombatSpawn.OverworldEnemies && combat.KillEnemyDataIds.Length == 0)
+                        errors.Add(E(ctx, "structural/combat-overworld-needs-kill-ids", scope.ToString(),
+                            $"Step '{combat.Id}': 'overworldEnemies' spawn requires at least one entry in 'killEnemyDataIds'.",
+                            stepId: combat.Id));
+                    if (combat.Expect is null)
+                        errors.Add(E(ctx, "structural/combat-missing-expect", scope.ToString(),
+                            $"Step '{combat.Id}': combat step has no 'expect' predicate and can never complete.",
+                            stepId: combat.Id, severity: Severity.Warning));
+                    if (combat.KillEnemyDataIds.Any(id => id == 0))
+                        errors.Add(E(ctx, "structural/combat-kill-id-zero", scope.ToString(),
+                            $"Step '{combat.Id}': 'killEnemyDataIds' contains a zero entry; 0 is not a valid BNpc data-id.",
+                            stepId: combat.Id));
+                    break;
+
                 case BranchStep branch:
                     for (var i = 0; i < branch.Branches.Length; i++)
                     {

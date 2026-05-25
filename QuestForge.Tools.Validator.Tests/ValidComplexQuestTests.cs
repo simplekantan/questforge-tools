@@ -94,12 +94,13 @@ public class ValidComplexQuestTests
                                         new CombatStep
                                         {
                                             Id     = "fight-enemies",
-                                            Target = new CombatTarget("nearestHostile", 20f),
+                                            KillEnemyDataIds = [100u],
+                                            Spawn  = CombatSpawn.AutoOnEnterArea,
                                             Recover = new RecoverConfig
                                             {
                                                 OnPlayerDefeated = new UseReturnRecoverAction { ThenRetry = true }
                                             },
-                                            Expect = new PredicateExpect { Predicate = "not playerInCombat()" }
+                                            Expect = new PredicateExpect { Predicate = "questVariable(65657, 0) >= 1" }
                                         }
                                     ]
                                 ),
