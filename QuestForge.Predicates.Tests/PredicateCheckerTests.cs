@@ -439,4 +439,392 @@ public class PredicateCheckerTests
         var scope = FragScope(("slot", PredicateType.String));
         AssertSingleSemanticError("questVariable(66104, ${slot}) >= 1", "type-mismatch", scope);
     }
+
+    // =========================================================================
+    // questVariableLow checker tests (CK-L* from NIBBLE_PREDICATES_PLAN.md)
+    // RED: all fail (unknown-function) until Builder adds the registry entry +
+    //      widens the index-range gate to the three quest-variable function names.
+    // =========================================================================
+
+    // ---- CK-L1/CK-L2/CK-L3: in-range indices produce no error ---------------
+
+    [Fact]
+    public void QuestVariableLow_InRange_HappyPath_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L1): "questVariableLow(65847, 0) >= 3" → no semantic errors.
+         */
+        AssertNoSemanticErrors("questVariableLow(65847, 0) >= 3");
+    }
+
+    [Fact]
+    public void QuestVariableLow_BoundaryLow_IndexZero_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L2): "questVariableLow(65847, 0) >= 1" → no error (index 0 is valid lower bound).
+         */
+        AssertNoSemanticErrors("questVariableLow(65847, 0) >= 1");
+    }
+
+    [Fact]
+    public void QuestVariableLow_BoundaryHigh_IndexFive_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L3): "questVariableLow(65847, 5) >= 1" → no error (index 5 is valid upper bound).
+         */
+        AssertNoSemanticErrors("questVariableLow(65847, 5) >= 1");
+    }
+
+    // ---- CK-L4/CK-L5: out-of-range literal indices emit quest-variable-index-out-of-range ---
+
+    [Fact]
+    public void QuestVariableLow_OutOfRange_IndexSix_ReportsError()
+    {
+        /*
+         * RED: Fails with unknown-function until entry added; then fails (no range error)
+         *      until Builder widens the checker gate to include questVariableLow.
+         *
+         * CONTRACT (CK-L4): "questVariableLow(65847, 6) >= 1" → exactly one
+         *                   "quest-variable-index-out-of-range".
+         */
+        AssertSingleSemanticError("questVariableLow(65847, 6) >= 1", "quest-variable-index-out-of-range");
+    }
+
+    [Fact]
+    public void QuestVariableLow_OutOfRange_IndexSeven_ReportsError()
+    {
+        /*
+         * RED: Same as CK-L4.
+         *
+         * CONTRACT (CK-L5): "questVariableLow(65847, 7) == 0" → exactly one
+         *                   "quest-variable-index-out-of-range".
+         */
+        AssertSingleSemanticError("questVariableLow(65847, 7) == 0", "quest-variable-index-out-of-range");
+    }
+
+    // ---- CK-L6/CK-L7: wrong arity emits arity-mismatch (range check suppressed) ---
+
+    [Fact]
+    public void QuestVariableLow_WrongArity_TooFew_ReportsArityMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L6): "questVariableLow(65847) >= 1" → exactly one "arity-mismatch".
+         *                   Range check is suppressed (no double-reporting).
+         */
+        AssertSingleSemanticError("questVariableLow(65847) >= 1", "arity-mismatch");
+    }
+
+    [Fact]
+    public void QuestVariableLow_WrongArity_TooMany_ReportsArityMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L7): "questVariableLow(65847, 0, 1) >= 1" → exactly one "arity-mismatch".
+         */
+        AssertSingleSemanticError("questVariableLow(65847, 0, 1) >= 1", "arity-mismatch");
+    }
+
+    // ---- CK-L8/CK-L9: wrong type emits type-mismatch (range check suppressed) ---
+
+    [Fact]
+    public void QuestVariableLow_WrongType_QuestIdIsString_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L8): questVariableLow("65847", 0) >= 1 → exactly one "type-mismatch"
+         *                   (NOT a range error — questId arg is the wrong type).
+         */
+        AssertSingleSemanticError("questVariableLow(\"65847\", 0) >= 1", "type-mismatch");
+    }
+
+    [Fact]
+    public void QuestVariableLow_WrongType_IndexIsString_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L9): questVariableLow(65847, "0") >= 1 → exactly one "type-mismatch"
+         *                   (index arg is a string, not IntLiteral — range check is skipped).
+         */
+        AssertSingleSemanticError("questVariableLow(65847, \"0\") >= 1", "type-mismatch");
+    }
+
+    // ---- CK-L10: typo produces unknown-function with suggestion ---------------
+
+    [Fact]
+    public void QuestVariableLow_Typo_UnknownFunction_WithSuggestion()
+    {
+        /*
+         * RED: The unknown-function error fires (that part passes), but the suggestion
+         *      assertion fails until questVariableLow is registered.
+         *
+         * CONTRACT (CK-L10): "questVariableLwo(65847, 0) >= 1" → exactly one "unknown-function"
+         *                    with a suggestion containing "questVariableLow".
+         *                    Levenshtein("questVariableLwo", "questVariableLow") == 2.
+         */
+        var errors = Semantic("questVariableLwo(65847, 0) >= 1");
+        Assert.True(errors.Count == 1,
+            $"Expected exactly 1 semantic error but got {errors.Count}: {Fmt(errors)}");
+        Assert.Equal("unknown-function", errors[0].Code);
+        Assert.NotNull(errors[0].Suggestion);
+        Assert.Contains("questVariableLow", errors[0].Suggestion);
+    }
+
+    // ---- CK-L11: bare Int misuse → type-mismatch -------------------------
+
+    [Fact]
+    public void QuestVariableLow_BareIntMisuse_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry;
+         *      then fails with wrong error code until implementation is complete.
+         *
+         * CONTRACT (CK-L11): "questVariableLow(65847, 0)" used bare → exactly one "type-mismatch"
+         *                    ("bare predicate expression must be Bool; got Int").
+         *                    Mirrors questVariable bare behaviour.
+         */
+        AssertSingleSemanticError("questVariableLow(65847, 0)", "type-mismatch");
+    }
+
+    // ---- CK-L12/CK-L13: fragment parameter index -------------------------
+
+    [Fact]
+    public void QuestVariableLow_FragmentParamIndex_IntType_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L12): With a scope declaring "slot: Int",
+         *                    "questVariableLow(65847, ${slot}) >= 1" → no semantic errors.
+         *                    A ParameterRef index is not range-checked (value unknown at validation time).
+         */
+        var scope = FragScope(("slot", PredicateType.Int));
+        AssertNoSemanticErrors("questVariableLow(65847, ${slot}) >= 1", scope);
+    }
+
+    [Fact]
+    public void QuestVariableLow_FragmentParamIndex_WrongType_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-L13): With a scope declaring "slot: String",
+         *                    "questVariableLow(65847, ${slot}) >= 1" → exactly one "type-mismatch"
+         *                    (the existing param-type check fires; NOT a range error).
+         */
+        var scope = FragScope(("slot", PredicateType.String));
+        AssertSingleSemanticError("questVariableLow(65847, ${slot}) >= 1", "type-mismatch", scope);
+    }
+
+    // =========================================================================
+    // questVariableHigh checker tests (CK-H* from NIBBLE_PREDICATES_PLAN.md)
+    // Symmetric to the CK-L* group above.
+    // RED: all fail (unknown-function) until Builder adds the registry entry +
+    //      widens the index-range gate to include questVariableHigh.
+    // =========================================================================
+
+    // ---- CK-H1/CK-H2/CK-H3: in-range indices produce no error ---------------
+
+    [Fact]
+    public void QuestVariableHigh_InRange_HappyPath_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H1): "questVariableHigh(65847, 1) >= 3" → no semantic errors.
+         */
+        AssertNoSemanticErrors("questVariableHigh(65847, 1) >= 3");
+    }
+
+    [Fact]
+    public void QuestVariableHigh_BoundaryLow_IndexZero_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H2): "questVariableHigh(65847, 0) >= 1" → no error.
+         */
+        AssertNoSemanticErrors("questVariableHigh(65847, 0) >= 1");
+    }
+
+    [Fact]
+    public void QuestVariableHigh_BoundaryHigh_IndexFive_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H3): "questVariableHigh(65847, 5) >= 1" → no error (index 5 is valid upper bound).
+         */
+        AssertNoSemanticErrors("questVariableHigh(65847, 5) >= 1");
+    }
+
+    // ---- CK-H4/CK-H5: out-of-range literal indices emit quest-variable-index-out-of-range ---
+
+    [Fact]
+    public void QuestVariableHigh_OutOfRange_IndexSix_ReportsError()
+    {
+        /*
+         * RED: Fails with unknown-function until entry added; then fails (no range error)
+         *      until Builder widens the checker gate to include questVariableHigh.
+         *
+         * CONTRACT (CK-H4): "questVariableHigh(65847, 6) >= 1" → exactly one
+         *                   "quest-variable-index-out-of-range".
+         */
+        AssertSingleSemanticError("questVariableHigh(65847, 6) >= 1", "quest-variable-index-out-of-range");
+    }
+
+    [Fact]
+    public void QuestVariableHigh_OutOfRange_IndexSeven_ReportsError()
+    {
+        /*
+         * RED: Same as CK-H4.
+         *
+         * CONTRACT (CK-H5): "questVariableHigh(65847, 7) == 0" → exactly one
+         *                   "quest-variable-index-out-of-range".
+         */
+        AssertSingleSemanticError("questVariableHigh(65847, 7) == 0", "quest-variable-index-out-of-range");
+    }
+
+    // ---- CK-H6/CK-H7: wrong arity emits arity-mismatch (range check suppressed) ---
+
+    [Fact]
+    public void QuestVariableHigh_WrongArity_TooFew_ReportsArityMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H6): "questVariableHigh(65847) >= 1" → exactly one "arity-mismatch".
+         */
+        AssertSingleSemanticError("questVariableHigh(65847) >= 1", "arity-mismatch");
+    }
+
+    [Fact]
+    public void QuestVariableHigh_WrongArity_TooMany_ReportsArityMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H7): "questVariableHigh(65847, 0, 1) >= 1" → exactly one "arity-mismatch".
+         */
+        AssertSingleSemanticError("questVariableHigh(65847, 0, 1) >= 1", "arity-mismatch");
+    }
+
+    // ---- CK-H8/CK-H9: wrong type emits type-mismatch (range check suppressed) ---
+
+    [Fact]
+    public void QuestVariableHigh_WrongType_QuestIdIsString_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H8): questVariableHigh("65847", 0) >= 1 → exactly one "type-mismatch".
+         */
+        AssertSingleSemanticError("questVariableHigh(\"65847\", 0) >= 1", "type-mismatch");
+    }
+
+    [Fact]
+    public void QuestVariableHigh_WrongType_IndexIsString_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H9): questVariableHigh(65847, "0") >= 1 → exactly one "type-mismatch"
+         *                   (index arg is a string — range check is skipped).
+         */
+        AssertSingleSemanticError("questVariableHigh(65847, \"0\") >= 1", "type-mismatch");
+    }
+
+    // ---- CK-H10: typo produces unknown-function with suggestion ---------------
+
+    [Fact]
+    public void QuestVariableHigh_Typo_UnknownFunction_WithSuggestion()
+    {
+        /*
+         * RED: The unknown-function error fires (that part passes), but the suggestion
+         *      assertion fails until questVariableHigh is registered.
+         *
+         * CONTRACT (CK-H10): "questVariableHihg(65847, 0) >= 1" → exactly one "unknown-function"
+         *                    with a suggestion containing "questVariableHigh".
+         *                    Levenshtein("questVariableHihg", "questVariableHigh") == 2.
+         */
+        var errors = Semantic("questVariableHihg(65847, 0) >= 1");
+        Assert.True(errors.Count == 1,
+            $"Expected exactly 1 semantic error but got {errors.Count}: {Fmt(errors)}");
+        Assert.Equal("unknown-function", errors[0].Code);
+        Assert.NotNull(errors[0].Suggestion);
+        Assert.Contains("questVariableHigh", errors[0].Suggestion);
+    }
+
+    // ---- CK-H11: bare Int misuse → type-mismatch -------------------------
+
+    [Fact]
+    public void QuestVariableHigh_BareIntMisuse_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H11): "questVariableHigh(65847, 0)" used bare → exactly one "type-mismatch".
+         */
+        AssertSingleSemanticError("questVariableHigh(65847, 0)", "type-mismatch");
+    }
+
+    // ---- CK-H12/CK-H13: fragment parameter index -------------------------
+
+    [Fact]
+    public void QuestVariableHigh_FragmentParamIndex_IntType_NoError()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H12): With a scope declaring "slot: Int",
+         *                    "questVariableHigh(65847, ${slot}) >= 1" → no semantic errors.
+         *                    A ParameterRef index is not range-checked.
+         */
+        var scope = FragScope(("slot", PredicateType.Int));
+        AssertNoSemanticErrors("questVariableHigh(65847, ${slot}) >= 1", scope);
+    }
+
+    [Fact]
+    public void QuestVariableHigh_FragmentParamIndex_WrongType_ReportsTypeMismatch()
+    {
+        /*
+         * RED: Fails with unknown-function until Builder adds the registry entry.
+         *
+         * CONTRACT (CK-H13): With a scope declaring "slot: String",
+         *                    "questVariableHigh(65847, ${slot}) >= 1" → exactly one "type-mismatch".
+         */
+        var scope = FragScope(("slot", PredicateType.String));
+        AssertSingleSemanticError("questVariableHigh(65847, ${slot}) >= 1", "type-mismatch", scope);
+    }
+
+    // ---- CK-MSG: error message names the offending function (not hardcoded "questVariable") ---
+
+    [Fact]
+    public void QuestVariableLow_OutOfRange_ErrorMessage_ContainsFunctionName()
+    {
+        /*
+         * RED: Fails with unknown-function until entry added; then fails (wrong message text)
+         *      until Builder uses call.Name in the error message instead of a hardcoded string.
+         *
+         * CONTRACT (CK-MSG): For "questVariableLow(65847, 6) >= 1", the single error's
+         *                    Message contains "questVariableLow" — proving the gate uses
+         *                    call.Name, not a hardcoded "questVariable".
+         *                    Expected message prefix: "questVariableLow index must be a literal in 0–5; got 6"
+         */
+        var errors = Semantic("questVariableLow(65847, 6) >= 1");
+        Assert.True(errors.Count == 1,
+            $"Expected exactly 1 semantic error but got {errors.Count}: {Fmt(errors)}");
+        Assert.Equal("quest-variable-index-out-of-range", errors[0].Code);
+        Assert.Contains("questVariableLow", errors[0].Message);
+    }
 }

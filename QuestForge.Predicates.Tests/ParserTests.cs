@@ -461,6 +461,85 @@ public class ParserTests
         Assert.NotNull(cmp_or_call);
     }
 
+    // =========================================================================
+    // questVariableLow / questVariableHigh parser tests (PA-N* from NIBBLE_PREDICATES_PLAN.md)
+    // No parser change is needed — parsing follows from the registry (D2).
+    // These tests pin that the parser accepts the nibble functions once the registry
+    // entries exist, and that range checking is a semantic (checker) concern only.
+    // RED: all three fail until Builder adds the two nibble registry entries.
+    // =========================================================================
+
+    [Fact]
+    public void QuestVariableLow_ParsesToFunctionCall()
+    {
+        /*
+         * RED: Parser reports unknown-function because entry is not yet registered.
+         *
+         * CONTRACT (PA-N1): Given "questVariableLow(65847, 0)",
+         *                   When PredicateParser.Parse is called,
+         *                   Then IsSuccess == true,
+         *                        Ast is FunctionCall("questVariableLow", [IntLiteral(65847), IntLiteral(0)]).
+         *
+         * BUILDER GUIDANCE: Add new("questVariableLow", new Fixed(2), [Int, Int], Int) to
+         *   FunctionRegistry.cs. No Parser.cs change is required.
+         */
+        var result = PredicateParser.Parse("questVariableLow(65847, 0)");
+
+        Assert.True(result.IsSuccess, FormatErrors(result));
+        var call = Assert.IsType<PredicateAst.FunctionCall>(result.Ast);
+        Assert.Equal("questVariableLow", call.Name);
+        Assert.Equal(2, call.Args.Count);
+        Assert.Equal(new PredicateAst.IntLiteral(65847L), call.Args[0]);
+        Assert.Equal(new PredicateAst.IntLiteral(0L), call.Args[1]);
+    }
+
+    [Fact]
+    public void QuestVariableHigh_ComposesWithComparison()
+    {
+        /*
+         * RED: Parser reports unknown-function because entry is not yet registered.
+         *
+         * CONTRACT (PA-N2): Given "questVariableHigh(65847, 1) >= 3",
+         *                   When parsed,
+         *                   Then Ast is Comparison(FunctionCall("questVariableHigh",
+         *                                              [IntLiteral(65847), IntLiteral(1)]),
+         *                                          GtEq, IntLiteral(3)).
+         *                   Confirms it composes with comparison exactly like questVariable.
+         */
+        var result = PredicateParser.Parse("questVariableHigh(65847, 1) >= 3");
+
+        Assert.True(result.IsSuccess, FormatErrors(result));
+        var cmp = Assert.IsType<PredicateAst.Comparison>(result.Ast);
+        Assert.Equal(ComparisonOp.GtEq, cmp.Op);
+        var call = Assert.IsType<PredicateAst.FunctionCall>(cmp.Left);
+        Assert.Equal("questVariableHigh", call.Name);
+        Assert.Equal(2, call.Args.Count);
+        Assert.Equal(new PredicateAst.IntLiteral(65847L), call.Args[0]);
+        Assert.Equal(new PredicateAst.IntLiteral(1L), call.Args[1]);
+        Assert.Equal(new PredicateAst.IntLiteral(3L), cmp.Right);
+    }
+
+    [Fact]
+    public void QuestVariableLow_OutOfRangeIndex_StillParsesSuccessfully()
+    {
+        /*
+         * RED: Parser reports unknown-function because entry is not yet registered.
+         *      Once entry is registered, this PASSES (range is a semantic concern).
+         *
+         * CONTRACT (PA-N3): Given "questVariableLow(65847, 6)" (index 6 is out-of-range),
+         *                   When parsed,
+         *                   Then IsSuccess == true — the PARSER does not range-check.
+         *                   Range validation is the checker's job (a semantic error, not syntactic).
+         *                   Guards that the index error is semantic, not syntactic.
+         */
+        var result = PredicateParser.Parse("questVariableLow(65847, 6)");
+
+        Assert.True(result.IsSuccess,
+            $"Parser should accept questVariableLow(65847, 6) even though index 6 is out-of-range. " +
+            $"Range checking belongs to the checker, not the parser. Errors: {FormatErrors(result)}");
+        Assert.NotNull(result.Ast);
+    }
+
     // ------------------------------------------------------------------ //
     // Helper
     // ------------------------------------------------------------------ //

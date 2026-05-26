@@ -4,12 +4,104 @@ namespace QuestForge.Predicates.Tests;
 
 public class FunctionRegistryTests
 {
+    // =========================================================================
+    // questVariableLow / questVariableHigh registry tests (RG-N* from NIBBLE_PREDICATES_PLAN.md)
+    // RED: all fail until Builder adds the two nibble entries to FunctionRegistry.
+    // =========================================================================
+
     [Fact]
-    public void All_Contains29Functions()
+    public void All_Contains31Functions()
     {
-        // Updated from 28 to 29: questVariable added.
-        // RED: fails until Builder adds the questVariable entry to FunctionRegistry.
-        Assert.Equal(29, FunctionRegistry.All.Count);
+        /*
+         * RED: FunctionRegistry.All.Count is currently 29. Fails until Builder adds
+         *      questVariableLow and questVariableHigh (count goes 29 → 31).
+         *
+         * CONTRACT (RG-N3): FunctionRegistry.All.Count == 31 after the two nibble entries land.
+         */
+        Assert.Equal(31, FunctionRegistry.All.Count);
+    }
+
+    [Fact]
+    public void QuestVariableLow_Signature_IsCorrect()
+    {
+        /*
+         * RED: TryGet returns false (not registered yet).
+         *
+         * CONTRACT (RG-N1): Given FunctionRegistry.TryGet("questVariableLow", out var sig),
+         *                   Then found == true,
+         *                        sig.Name == "questVariableLow",
+         *                        sig.Arity is Fixed(2),
+         *                        sig.ParameterTypes == [Int, Int],
+         *                        sig.ReturnType == Int.
+         *
+         * BUILDER GUIDANCE: new("questVariableLow", new Fixed(2), [Int, Int], Int)
+         *   adjacent to the questVariable entry in s_functions.
+         */
+        var found = FunctionRegistry.TryGet("questVariableLow", out var sig);
+
+        Assert.True(found, "questVariableLow should be registered in FunctionRegistry");
+        Assert.Equal("questVariableLow", sig.Name);
+        var fixed2 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(2, fixed2.Count);
+        Assert.Equal(2, sig.ParameterTypes.Count);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[1]);
+        Assert.Equal(PredicateType.Int, sig.ReturnType);
+    }
+
+    [Fact]
+    public void QuestVariableHigh_Signature_IsCorrect()
+    {
+        /*
+         * RED: TryGet returns false (not registered yet).
+         *
+         * CONTRACT (RG-N2): Given FunctionRegistry.TryGet("questVariableHigh", out var sig),
+         *                   Then found == true,
+         *                        sig.Name == "questVariableHigh",
+         *                        sig.Arity is Fixed(2),
+         *                        sig.ParameterTypes == [Int, Int],
+         *                        sig.ReturnType == Int.
+         */
+        var found = FunctionRegistry.TryGet("questVariableHigh", out var sig);
+
+        Assert.True(found, "questVariableHigh should be registered in FunctionRegistry");
+        Assert.Equal("questVariableHigh", sig.Name);
+        var fixed2 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(2, fixed2.Count);
+        Assert.Equal(2, sig.ParameterTypes.Count);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[1]);
+        Assert.Equal(PredicateType.Int, sig.ReturnType);
+    }
+
+    [Fact]
+    public void QuestVariableLow_SuggestSimilar_SuggestsForTypo()
+    {
+        /*
+         * RED: SuggestSimilar("questVariableLwo") returns empty (entry not registered yet).
+         *
+         * CONTRACT (RG-N4): Given the typo "questVariableLwo" (transposed 'w' and 'o'),
+         *                   When FunctionRegistry.SuggestSimilar("questVariableLwo"),
+         *                   Then the result contains "questVariableLow".
+         *                   Levenshtein("questVariableLwo", "questVariableLow") == 2 ≤ maxDistance 2.
+         */
+        var suggestions = FunctionRegistry.SuggestSimilar("questVariableLwo");
+
+        Assert.Contains("questVariableLow", suggestions);
+    }
+
+    [Fact]
+    public void QuestVariableHigh_SuggestSimilar_ExactMatchReturnsSelf()
+    {
+        /*
+         * RED: Entry not registered yet — SuggestSimilar returns empty.
+         *
+         * CONTRACT (RG-N5, first clause): SuggestSimilar("questVariableHigh") contains
+         *   "questVariableHigh" (exact match distance 0 ≤ 2).
+         */
+        var suggestions = FunctionRegistry.SuggestSimilar("questVariableHigh");
+
+        Assert.Contains("questVariableHigh", suggestions);
     }
 
     // =========================================================================

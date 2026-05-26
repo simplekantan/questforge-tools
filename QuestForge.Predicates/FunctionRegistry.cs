@@ -36,6 +36,8 @@ public static class FunctionRegistry
         new("inNewGamePlus",             new Fixed(0),           [],              Bool),
         new("isAttuned",                 new Fixed(1),           [Int],           Bool),
         new("questVariable",             new Fixed(2),           [Int, Int],      Int),
+        new("questVariableLow",          new Fixed(2),           [Int, Int],      Int),
+        new("questVariableHigh",         new Fixed(2),           [Int, Int],      Int),
     ];
 
     public static IReadOnlyDictionary<string, FunctionSignature> All { get; } =
