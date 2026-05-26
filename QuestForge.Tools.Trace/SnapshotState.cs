@@ -35,6 +35,15 @@ public sealed class SnapshotState
     private List<uint>? _pendingKeyItemsRemoved;
     private uint _lastInventoryHash;
 
+    // Combat correlation state — mirrors SnapshotAggregator.
+    private bool _inCombat;
+    private WorldPosition? _combatStartPosition;
+    private int _combatStartZone;
+    private readonly List<(uint DataId, DateTimeOffset At)> _recentKills = new();
+    private readonly Dictionary<int, (HashSet<uint> DataIds, int FinalValue)> _killCorrelatedTargets = new();
+    // Baseline for per-index delta detection. Survives ResetPendingKeyItemDeltas.
+    private byte[]? _prevQuestVariables;
+
     /// <summary>
     /// Apply one observation event to the accumulated state.
     /// Returns <c>false</c> only when the method name is not recognised.
@@ -70,10 +79,122 @@ public sealed class SnapshotState
                 }
                 return true;
 
+            case "InCombat":
+            {
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                bool inCombat;
+                if (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False)
+                    inCombat = val.GetBoolean();
+                else if (val.ValueKind == JsonValueKind.Object
+                    && val.TryGetProperty("value", out var bv)
+                    && (bv.ValueKind == JsonValueKind.True || bv.ValueKind == JsonValueKind.False))
+                    inCombat = bv.GetBoolean();
+                else
+                    return true;
+
+                if (inCombat && !_inCombat)
+                {
+                    _combatStartPosition = Position;
+                    _combatStartZone = (int)Zone.Value;
+                }
+                _inCombat = inCombat;
+                return true;
+            }
+
+            case "EnemyKilled":
+            {
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                uint dataId = 0;
+                if (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("dataId", out var did))
+                    try { dataId = did.GetUInt32(); } catch { return true; }
+                else
+                    return true;
+
+                if (dataId == 0) return true;
+
+                // Evict kills older than the correlation window relative to this event's timestamp.
+                var cutoff = ev.At - SnapshotAggregator.CombatCorrelationWindow;
+                _recentKills.RemoveAll(k => k.At < cutoff);
+                _recentKills.Add((dataId, ev.At));
+                return true;
+            }
+
+            case "GetQuestVariables":
+            {
+                if (!QuestArgMatches(ev) || !ev.Value.HasValue) return true;
+
+                // Parse value: array shape [v0..v5] or object-wrapped {"value":[...]}
+                var val = ev.Value.Value;
+                JsonElement arrayEl;
+                if (val.ValueKind == JsonValueKind.Array)
+                    arrayEl = val;
+                else if (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("value", out var wrappedArr)
+                    && wrappedArr.ValueKind == JsonValueKind.Array)
+                    arrayEl = wrappedArr;
+                else
+                    return true;
+
+                var newVars = new byte[arrayEl.GetArrayLength()];
+                int idx2 = 0;
+                foreach (var el in arrayEl.EnumerateArray())
+                {
+                    try { newVars[idx2] = (byte)el.GetInt32(); } catch { }
+                    idx2++;
+                }
+
+                var prev = _prevQuestVariables;
+
+                // Correlate bumps vs recent kills in window
+                var windowStart = ev.At - SnapshotAggregator.CombatCorrelationWindow;
+                for (int vi = 0; vi < newVars.Length; vi++)
+                {
+                    var prevVal = (prev != null && vi < prev.Length) ? prev[vi] : (byte)0;
+                    var newVal = newVars[vi];
+                    if (newVal <= prevVal) continue;
+
+                    // Find kills within [ev.At - window, ev.At]
+                    var correlated = _recentKills.Where(k => k.At >= windowStart && k.At <= ev.At).ToList();
+                    if (correlated.Count == 0) continue;
+
+                    if (!_killCorrelatedTargets.TryGetValue(vi, out var entry))
+                        entry = (new HashSet<uint>(), newVal);
+
+                    foreach (var (killDataId, _) in correlated)
+                        entry.DataIds.Add(killDataId);
+                    entry.FinalValue = newVal;
+                    _killCorrelatedTargets[vi] = entry;
+                }
+
+                _prevQuestVariables = newVars;
+                return true;
+            }
+
             case "GetQuestSequence":
                 if (QuestArgMatches(ev) && ev.Value.HasValue
                     && ev.Value.Value.TryGetInt32(out var seq))
+                {
+                    var oldSeq = QuestSequence;
                     QuestSequence = seq;
+
+                    // Correlate sequence advance with recent kills (index -1)
+                    if (seq > oldSeq && _recentKills.Count > 0)
+                    {
+                        var windowStart = ev.At - SnapshotAggregator.CombatCorrelationWindow;
+                        var correlated = _recentKills.Where(k => k.At >= windowStart && k.At <= ev.At).ToList();
+                        if (correlated.Count > 0)
+                        {
+                            const int seqIdx = SnapshotAggregator.SequenceVariableIndex;
+                            if (!_killCorrelatedTargets.TryGetValue(seqIdx, out var entry))
+                                entry = (new HashSet<uint>(), seq);
+                            foreach (var (killDataId, _) in correlated)
+                                entry.DataIds.Add(killDataId);
+                            entry.FinalValue = seq;
+                            _killCorrelatedTargets[seqIdx] = entry;
+                        }
+                    }
+                }
                 return true;
 
             case "GetQuestFlags":
@@ -233,12 +354,14 @@ public sealed class SnapshotState
 
     /// <summary>
     /// Clear pending delta lists so the next decision's "after" snapshot sees a clean slate.
-    /// Does NOT clear the running _keyItemCounts.
+    /// Does NOT clear the running _keyItemCounts or _prevQuestVariables (cross-window continuity).
     /// </summary>
     public void ResetPendingKeyItemDeltas()
     {
         _pendingKeyItemsAdded = null;
         _pendingKeyItemsRemoved = null;
+        _recentKills.Clear();
+        _killCorrelatedTargets.Clear();
     }
 
     /// <summary>
@@ -273,6 +396,20 @@ public sealed class SnapshotState
         return false;
     }
 
+    private IReadOnlyDictionary<int, KillCorrelation>? BuildKillCorrelatedTargets()
+    {
+        if (_killCorrelatedTargets.Count == 0) return null;
+        var result = new Dictionary<int, KillCorrelation>(_killCorrelatedTargets.Count);
+        foreach (var (k, v) in _killCorrelatedTargets)
+        {
+            if (v.DataIds.Count == 0) continue;
+            result[k] = new KillCorrelation(
+                v.DataIds.OrderBy(id => id).ToArray(),
+                v.FinalValue);
+        }
+        return result.Count > 0 ? result : null;
+    }
+
     /// <summary>Capture an immutable snapshot at the given timestamp.</summary>
     public GameStateSnapshot ToSnapshot(DateTimeOffset at)
         => new(at, Zone, Position, _activeQuest, QuestSequence, QuestFlags,
@@ -282,7 +419,11 @@ public sealed class SnapshotState
             LastAethernetShardInteracted = LastAethernetShardInteracted,
             KeyItems = new Dictionary<uint, int>(_keyItemCounts),
             KeyItemsAdded = _pendingKeyItemsAdded,
-            KeyItemsRemoved = _pendingKeyItemsRemoved
+            KeyItemsRemoved = _pendingKeyItemsRemoved,
+            InCombat = _inCombat,
+            KillCorrelatedTargets = BuildKillCorrelatedTargets(),
+            CombatStartPosition = _combatStartPosition,
+            CombatStartZone = _combatStartZone
         };
 
     /// <summary>
@@ -297,7 +438,11 @@ public sealed class SnapshotState
             LastAethernetShardInteracted = LastAethernetShardInteracted,
             KeyItems = new Dictionary<uint, int>(_keyItemCounts),
             KeyItemsAdded = _pendingKeyItemsAdded,
-            KeyItemsRemoved = _pendingKeyItemsRemoved
+            KeyItemsRemoved = _pendingKeyItemsRemoved,
+            InCombat = _inCombat,
+            KillCorrelatedTargets = BuildKillCorrelatedTargets(),
+            CombatStartPosition = _combatStartPosition,
+            CombatStartZone = _combatStartZone
         };
 
     /// <summary>

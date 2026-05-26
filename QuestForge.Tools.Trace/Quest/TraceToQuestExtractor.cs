@@ -104,10 +104,11 @@ public sealed class TraceToQuestExtractor
             // Skip decisions after RunEnd
             if (runEnd != null && decision.At > runEnd.At) continue;
 
-            // Skip terminal actions
+            // Skip terminal actions and wait — UNLESS combat correlation is present in the pre-roll.
+            // We must evaluate the snapshot before deciding to skip, because all combat observations
+            // may have landed in the pre-roll (before this first decision).
             var actionTypeLower = decision.ActionType.ToLowerInvariant();
-            if (TraceConstants.IsTerminalAction(actionTypeLower) || actionTypeLower == TraceConstants.ActionWait)
-                continue;
+            bool isSkippableAction = TraceConstants.IsTerminalAction(actionTypeLower) || actionTypeLower == TraceConstants.ActionWait;
 
             // a. before snapshot
             var before = snapshot.ToSnapshot(decision.At, activeQuest);
@@ -125,12 +126,6 @@ public sealed class TraceToQuestExtractor
                 }
             }
 
-            if (submitted == null)
-            {
-                todos.Add($"decision at seq {before.QuestSequence} had no action.submitted; skipped");
-                continue;
-            }
-
             // c. find first ActionCompletedEvent after submitted
             ActionCompletedEvent? completed = null;
             int completedIdx = -1;
@@ -145,8 +140,8 @@ public sealed class TraceToQuestExtractor
             }
 
             // d. If Interact, record the NPC interaction BEFORE advance
-            var submittedTypeLower = submitted.ActionType.ToLowerInvariant();
-            if (submittedTypeLower == "interact" && submitted.Parameters.HasValue)
+            var submittedTypeLower = submitted?.ActionType.ToLowerInvariant() ?? string.Empty;
+            if (submitted != null && submittedTypeLower == "interact" && submitted.Parameters.HasValue)
             {
                 uint npcId = 0;
                 var p = submitted.Parameters.Value;
@@ -161,7 +156,7 @@ public sealed class TraceToQuestExtractor
 
             // e. Advance snapshot: apply ObservationEvents between completed (exclusive)
             //    and next decision (exclusive)
-            int advanceStart = completedIdx >= 0 ? completedIdx + 1 : (submittedIdx + 1);
+            int advanceStart = completedIdx >= 0 ? completedIdx + 1 : (submittedIdx >= 0 ? submittedIdx + 1 : decisionIdx + 1);
             int advanceEnd = (i + 1 < decisions.Count) ? decisions[i + 1].EventIndex : events.Count;
 
             // Collect ObservationEvents with Method="InventoryChanged" in this window for HandOver fallback
@@ -200,6 +195,40 @@ public sealed class TraceToQuestExtractor
                 : $"step-{i}";
 
             Step? step = null;
+
+            // Combat takes precedence: emit CombatStep when inference returns "combat",
+            // regardless of action type (handles wait decisions and missing submitted events).
+            // WHY StepFactory: the offline extractor must produce the SAME CombatStep the live
+            // authoring path (SnapshotAggregator → StepFactory) produces for the same event
+            // stream — including Zone/RequiredZone. Building through the shared factory keeps
+            // live and offline in lock-step; hand-rolling the step here previously left
+            // Zone/RequiredZone unset, a live-vs-offline divergence.
+            if (inference.StepType == "combat")
+            {
+                step = StepFactory.Build("combat", stepId, inference.SuggestedExpect, after, before);
+                todos.Add($"combat step {stepId}: review Spawn (defaulted overworldEnemies) and KillEnemyDataIds");
+
+                var groupKey2 = before.QuestSequence;
+                workingList.Add((groupKey2, step));
+                snapshot.ResetPendingKeyItemDeltas();
+                continue;
+            }
+
+            // After inference, apply the skippable-action check (wait, terminal).
+            // We deferred this so inference could run on the pre-roll correlation.
+            if (isSkippableAction)
+            {
+                snapshot.ResetPendingKeyItemDeltas();
+                continue;
+            }
+
+            // If no submitted action and inference is not combat, skip.
+            if (submitted == null)
+            {
+                todos.Add($"decision at seq {before.QuestSequence} had no action.submitted; skipped");
+                snapshot.ResetPendingKeyItemDeltas();
+                continue;
+            }
 
             if (submittedTypeLower == "navigate")
             {
