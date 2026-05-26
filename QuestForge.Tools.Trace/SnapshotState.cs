@@ -40,7 +40,8 @@ public sealed class SnapshotState
     private WorldPosition? _combatStartPosition;
     private int _combatStartZone;
     private readonly List<(uint DataId, DateTimeOffset At)> _recentKills = new();
-    private readonly Dictionary<int, (HashSet<uint> DataIds, int FinalValue)> _killCorrelatedTargets = new();
+    private readonly List<(NibbleKey Key, int FinalValue, DateTimeOffset At)> _recentNibbleBumps = new();
+    private readonly Dictionary<NibbleKey, (HashSet<uint> DataIds, int FinalValue)> _killCorrelatedTargets = new();
     // Baseline for per-index delta detection. Survives ResetPendingKeyItemDeltas.
     private byte[]? _prevQuestVariables;
 
@@ -114,10 +115,16 @@ public sealed class SnapshotState
 
                 if (dataId == 0) return true;
 
-                // Evict kills older than the correlation window relative to this event's timestamp.
-                var cutoff = ev.At - SnapshotAggregator.CombatCorrelationWindow;
-                _recentKills.RemoveAll(k => k.At < cutoff);
                 _recentKills.Add((dataId, ev.At));
+                EvictStale(ev.At);
+
+                // Correlate-on-arrival: look back at buffered nibble bumps within the symmetric window.
+                foreach (var (key, finalValue, bumpAt) in _recentNibbleBumps)
+                {
+                    if (AbsDelta(ev.At, bumpAt) <= SnapshotAggregator.CombatCorrelationWindow)
+                        AddToCorrelation(key, finalValue, dataId);
+                }
+
                 return true;
             }
 
@@ -144,57 +151,50 @@ public sealed class SnapshotState
                     idx2++;
                 }
 
-                var prev = _prevQuestVariables;
-
-                // Correlate bumps vs recent kills in window
-                var windowStart = ev.At - SnapshotAggregator.CombatCorrelationWindow;
-                for (int vi = 0; vi < newVars.Length; vi++)
+                // First observation: establish the baseline only. No delta, no bump, no correlation.
+                if (_prevQuestVariables is null)
                 {
-                    var prevVal = (prev != null && vi < prev.Length) ? prev[vi] : (byte)0;
-                    var newVal = newVars[vi];
-                    if (newVal <= prevVal) continue;
-
-                    // Find kills within [ev.At - window, ev.At]
-                    var correlated = _recentKills.Where(k => k.At >= windowStart && k.At <= ev.At).ToList();
-                    if (correlated.Count == 0) continue;
-
-                    if (!_killCorrelatedTargets.TryGetValue(vi, out var entry))
-                        entry = (new HashSet<uint>(), newVal);
-
-                    foreach (var (killDataId, _) in correlated)
-                        entry.DataIds.Add(killDataId);
-                    entry.FinalValue = newVal;
-                    _killCorrelatedTargets[vi] = entry;
+                    _prevQuestVariables = newVars;
+                    return true;
                 }
 
+                var prev = _prevQuestVariables;
                 _prevQuestVariables = newVars;
+
+                EvictStale(ev.At);
+
+                for (int i = 0; i < newVars.Length; i++)
+                {
+                    var n = newVars[i];
+                    var p = i < prev.Length ? prev[i] : (byte)0;
+
+                    var lowUp  = (n & 0x0F) > (p & 0x0F);
+                    var highUp = (n >> 4)   > (p >> 4);
+
+                    if (lowUp)
+                    {
+                        var key = new NibbleKey(i, NibbleHalf.Low);
+                        var nibbleValue = n & 0x0F;
+                        _recentNibbleBumps.Add((key, nibbleValue, ev.At));
+                        CorrelateKillsToBump(key, nibbleValue, ev.At);
+                    }
+
+                    if (highUp)
+                    {
+                        var key = new NibbleKey(i, NibbleHalf.High);
+                        var nibbleValue = n >> 4;
+                        _recentNibbleBumps.Add((key, nibbleValue, ev.At));
+                        CorrelateKillsToBump(key, nibbleValue, ev.At);
+                    }
+                }
+
                 return true;
             }
 
             case "GetQuestSequence":
                 if (QuestArgMatches(ev) && ev.Value.HasValue
                     && ev.Value.Value.TryGetInt32(out var seq))
-                {
-                    var oldSeq = QuestSequence;
                     QuestSequence = seq;
-
-                    // Correlate sequence advance with recent kills (index -1)
-                    if (seq > oldSeq && _recentKills.Count > 0)
-                    {
-                        var windowStart = ev.At - SnapshotAggregator.CombatCorrelationWindow;
-                        var correlated = _recentKills.Where(k => k.At >= windowStart && k.At <= ev.At).ToList();
-                        if (correlated.Count > 0)
-                        {
-                            const int seqIdx = SnapshotAggregator.SequenceVariableIndex;
-                            if (!_killCorrelatedTargets.TryGetValue(seqIdx, out var entry))
-                                entry = (new HashSet<uint>(), seq);
-                            foreach (var (killDataId, _) in correlated)
-                                entry.DataIds.Add(killDataId);
-                            entry.FinalValue = seq;
-                            _killCorrelatedTargets[seqIdx] = entry;
-                        }
-                    }
-                }
                 return true;
 
             case "GetQuestFlags":
@@ -361,6 +361,7 @@ public sealed class SnapshotState
         _pendingKeyItemsAdded = null;
         _pendingKeyItemsRemoved = null;
         _recentKills.Clear();
+        _recentNibbleBumps.Clear();
         _killCorrelatedTargets.Clear();
     }
 
@@ -396,18 +397,53 @@ public sealed class SnapshotState
         return false;
     }
 
-    private IReadOnlyDictionary<int, KillCorrelation>? BuildKillCorrelatedTargets()
+    private IReadOnlyDictionary<NibbleKey, KillCorrelation>? BuildKillCorrelatedTargets()
     {
         if (_killCorrelatedTargets.Count == 0) return null;
-        var result = new Dictionary<int, KillCorrelation>(_killCorrelatedTargets.Count);
-        foreach (var (k, v) in _killCorrelatedTargets)
+        var result = new Dictionary<NibbleKey, KillCorrelation>(_killCorrelatedTargets.Count);
+        foreach (var (key, (dataIds, finalValue)) in _killCorrelatedTargets)
         {
-            if (v.DataIds.Count == 0) continue;
-            result[k] = new KillCorrelation(
-                v.DataIds.OrderBy(id => id).ToArray(),
-                v.FinalValue);
+            if (dataIds.Count == 0) continue;
+            result[key] = new KillCorrelation(
+                dataIds.OrderBy(id => id).ToList(),
+                finalValue);
         }
         return result.Count > 0 ? result : null;
+    }
+
+    private void EvictStale(DateTimeOffset now)
+    {
+        var cutoff = now - SnapshotAggregator.CombatCorrelationWindow;
+        _recentKills.RemoveAll(k => k.At < cutoff);
+        _recentNibbleBumps.RemoveAll(b => b.At < cutoff);
+    }
+
+    private static TimeSpan AbsDelta(DateTimeOffset a, DateTimeOffset b)
+    {
+        var d = a - b;
+        return d < TimeSpan.Zero ? -d : d;
+    }
+
+    private void CorrelateKillsToBump(NibbleKey key, int finalValue, DateTimeOffset bumpAt)
+    {
+        foreach (var (dataId, killAt) in _recentKills)
+        {
+            if (AbsDelta(bumpAt, killAt) <= SnapshotAggregator.CombatCorrelationWindow)
+                AddToCorrelation(key, finalValue, dataId);
+        }
+
+        if (!_killCorrelatedTargets.TryGetValue(key, out var bucket))
+            _killCorrelatedTargets[key] = (new HashSet<uint>(), finalValue);
+        else
+            _killCorrelatedTargets[key] = (bucket.DataIds, finalValue);
+    }
+
+    private void AddToCorrelation(NibbleKey key, int finalValue, uint dataId)
+    {
+        if (!_killCorrelatedTargets.TryGetValue(key, out var bucket))
+            bucket = (new HashSet<uint>(), finalValue);
+        bucket.DataIds.Add(dataId);
+        _killCorrelatedTargets[key] = (bucket.DataIds, finalValue);
     }
 
     /// <summary>Capture an immutable snapshot at the given timestamp.</summary>
