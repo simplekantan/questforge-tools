@@ -11,22 +11,17 @@ using static QuestForge.Tools.Trace.Tests.TraceTestHelpers;
 namespace QuestForge.Tools.Trace.Tests;
 
 /// <summary>
-/// RED-phase tests for Slice B: TraceToQuestExtractor nibble combat extraction.
-/// GWT-E1'..E4' from COMBAT_NIBBLE_DETECTION_PLAN.md §5.6.
+/// RED-phase tests for PR-B: TraceToQuestExtractor end-to-end combat extraction
+/// rebuilt on the target-based span model.
 ///
-/// These tests REPLACE the byte-level GWT-E1..E3 tests (deleted). Byte tests asserted:
-///   - "questVariable(65847, 0) >= 3" (whole-byte expect) → REMOVED (Settled #1)
-///   - No baseline-first ordering in the trace → REMOVED (Slice A baseline contract)
-/// The new tests assert:
-///   - "questVariableLow(65847, 0) >= 3" (nibble expect from StepInferenceEngine Rule 2.2)
-///   - Baseline-first GetQuestVariables before the kill+bump rounds
-///   - Bidirectional correlation: bump-before-kill order (real in-game order)
-///   - GWT-E4': parity — same expect string as StepInferenceEngine.Infer produces directly
+/// REWRITTEN: E1'..E4' trace builders now use GetTarget{hostile} instead of EnemyKilled
+/// as the attribution driver. EnemyKilled may still appear in the stream as a no-op.
+/// E3' reframed as "no target in span → no CombatStep" (not "outside window").
+/// E4' is the LIVE==OFFLINE parity lock (GWT-O-E4').
 ///
-/// Tests fail until Builder rewrites SnapshotState.Apply (nibble correlation, NibbleKey)
-/// and StepInferenceEngine Rule 2.2 (nibble expect, dominant selection).
-/// TraceToQuestExtractor control flow is UNCHANGED (verified: Builder does not need to
-/// touch TraceToQuestExtractor.cs beyond confirming the combat branch still fires).
+/// TraceToQuestExtractor.cs is UNCHANGED — it already routes combat through
+/// StepInferenceEngine.Infer. Once SnapshotState.BuildKillCorrelatedTargets is
+/// target-based, the correct expect/step-id come out for free.
 /// </summary>
 public sealed class TraceToQuestExtractorCombatTests
 {
@@ -34,9 +29,7 @@ public sealed class TraceToQuestExtractorCombatTests
 
     private static readonly DateTimeOffset BaseTime = T0;
 
-    // -------------------------------------------------------------------------
-    // Event builders
-    // -------------------------------------------------------------------------
+    // ─── Event builders ───────────────────────────────────────────────────────
 
     private static ObservationEvent ObsMs(string method, JsonElement? argument, JsonElement? value, double ms)
         => new(RunId: "aaa", Method: method, Argument: argument, Value: value,
@@ -45,34 +38,36 @@ public sealed class TraceToQuestExtractorCombatTests
     private static JsonElement InCombatValue(bool v)
         => JsonSerializer.SerializeToElement(new { value = v });
 
+    private static JsonElement HostileTargetValue(uint baseId)
+        => JsonSerializer.SerializeToElement(new { baseId, kind = "hostile" });
+
     private static JsonElement EnemyKilledValue(uint dataId)
         => JsonSerializer.SerializeToElement(new { dataId });
 
     private static JsonElement QuestVariablesValue(IReadOnlyList<int> variables)
         => JsonSerializer.SerializeToElement(variables);
 
-    // -------------------------------------------------------------------------
-    // Trace builders
-    // -------------------------------------------------------------------------
+    // ─── Trace builders ───────────────────────────────────────────────────────
 
     /// <summary>
-    /// Build a synthetic combat trace for quest 65847, enemy 347, V0 low nibble 0→3.
+    /// Standard target-based combat trace for quest 65847, enemy 347, V0 low nibble 0→3.
     ///
     /// Timeline (ms from T0):
     ///   0      RunStart 65847
     ///   100    GetPlayerZone 148
     ///   200    GetPlayerPosition (10,0,20)
-    ///   300    InCombat true
-    ///   310    GetQuestVariables [0x00,…]   ← BASELINE-ONLY (first obs, no bump)
-    ///   500    GetQuestVariables [0x01,…]   ← bump (low 0→1)
-    ///   500    EnemyKilled 347              ← kill; bidirectional: matches bump@500
-    ///   800    GetQuestVariables [0x02,…]   ← bump (low 1→2)
-    ///   800    EnemyKilled 347
-    ///  1100    GetQuestVariables [0x03,…]   ← bump (low 2→3)
-    ///  1100    EnemyKilled 347
+    ///   250    GetTarget{baseId:347,hostile}   ← PRE-COMBAT target (seeds span at combat-start)
+    ///   300    InCombat{true}                  ← seeds span with 347
+    ///   310    GetQuestVariables [0x00,…]       ← BASELINE-ONLY (first obs)
+    ///   500    GetQuestVariables [0x01,…]       ← bump (low 0→1), in-combat span
+    ///   600    GetQuestVariables [0x02,…]       ← bump (low 1→2)
+    ///  1000    GetQuestVariables [0x03,…]       ← bump (low 2→3)
+    ///  1100    EnemyKilled{347}                 ← no-op (recognised but no attribution)
     ///  1200    Decision (actionType)
     ///  [optional submitted/completed]
     ///  2000    RunEnd
+    ///
+    /// The pre-combat GetTarget is the ONLY GetTarget — mirrors real observer dedup semantics.
     /// </summary>
     private static IReadOnlyList<TraceEvent> BuildNibbleCombatTrace(
         string decisionActionType = "wait",
@@ -82,33 +77,32 @@ public sealed class TraceToQuestExtractorCombatTests
         {
             new RunStartEvent("aaa", QuestId65847, 1u, BaseTime),
 
-            // Pre-roll: zone + position
+            // Zone + position
             ObsMs("GetPlayerZone",     null, ZoneValue(148u),             100),
             ObsMs("GetPlayerPosition", null, PositionValue(10f, 0f, 20f), 200),
 
-            // InCombat starts
+            // Pre-combat target — single forward before InCombat (dedup semantics)
+            ObsMs("GetTarget", null, HostileTargetValue(347u), 250),
+
+            // InCombat seeds span with 347
             ObsMs("InCombat", null, InCombatValue(true), 300),
 
-            // BASELINE-ONLY first GetQuestVariables (Slice A contract: no bump from null→0)
+            // Baseline-only first GetQuestVariables
             ObsMs("GetQuestVariables", QuestIdArg(QuestId65847),
                 QuestVariablesValue([0x00, 0, 0, 0, 0, 0]), 310),
 
-            // Round 1: bump-before-kill at t=500ms
+            // Three bumps in-combat (all gated → in span)
             ObsMs("GetQuestVariables", QuestIdArg(QuestId65847),
                 QuestVariablesValue([0x01, 0, 0, 0, 0, 0]), 500),
-            ObsMs("EnemyKilled", null, EnemyKilledValue(347u), 500),
-
-            // Round 2: bump-before-kill at t=800ms (gap from prev 300ms < 500ms window)
             ObsMs("GetQuestVariables", QuestIdArg(QuestId65847),
-                QuestVariablesValue([0x02, 0, 0, 0, 0, 0]), 800),
-            ObsMs("EnemyKilled", null, EnemyKilledValue(347u), 800),
-
-            // Round 3: bump-before-kill at t=1100ms
+                QuestVariablesValue([0x02, 0, 0, 0, 0, 0]), 600),
             ObsMs("GetQuestVariables", QuestIdArg(QuestId65847),
-                QuestVariablesValue([0x03, 0, 0, 0, 0, 0]), 1100),
+                QuestVariablesValue([0x03, 0, 0, 0, 0, 0]), 1000),
+
+            // EnemyKilled as recognised no-op (real traces emit it; it must not break correlation)
             ObsMs("EnemyKilled", null, EnemyKilledValue(347u), 1100),
 
-            // Decision in the combat window
+            // Decision
             new DecisionEvent("aaa", null, decisionActionType, BaseTime.AddMilliseconds(1200)),
         };
 
@@ -131,10 +125,11 @@ public sealed class TraceToQuestExtractorCombatTests
     }
 
     /// <summary>
-    /// Builds a trace with kills where the only variable bump is 700ms after the kill
-    /// (gap > 500ms window) → no correlation → no CombatStep.
+    /// Trace with EnemyKilled but NO GetTarget{hostile}:
+    /// span has no target → KillCorrelatedTargets null → inference falls through to navigate.
+    /// A navigate decision is included so the extractor has something to emit.
     /// </summary>
-    private static IReadOnlyList<TraceEvent> BuildUncorrelatedKillsTrace()
+    private static IReadOnlyList<TraceEvent> BuildNoTargetCombatTrace()
     {
         return
         [
@@ -142,58 +137,52 @@ public sealed class TraceToQuestExtractorCombatTests
 
             ObsMs("GetPlayerZone",     null, ZoneValue(148u),             100),
             ObsMs("GetPlayerPosition", null, PositionValue(10f, 0f, 20f), 200),
+
+            // InCombat{true} — no prior GetTarget{hostile}, so _lastBattleNpcTarget is null
             ObsMs("InCombat", null, InCombatValue(true), 300),
 
-            // Baseline first
+            // Baseline
             ObsMs("GetQuestVariables", QuestIdArg(QuestId65847),
                 QuestVariablesValue([0x00, 0, 0, 0, 0, 0]), 310),
 
-            // Kill at t=500ms
+            // Kill arrives (no-op under target model)
             ObsMs("EnemyKilled", null, EnemyKilledValue(347u), 500),
 
-            // Variable bump at t=1200ms — gap from kill = 700ms > 500ms → no correlation
+            // Nibble bumps IN combat — but no target in span
             ObsMs("GetQuestVariables", QuestIdArg(QuestId65847),
-                QuestVariablesValue([0x01, 0, 0, 0, 0, 0]), 1200),
+                QuestVariablesValue([0x01, 0, 0, 0, 0, 0]), 600),
 
-            // Navigate decision so the extractor has something to process
-            new DecisionEvent("aaa", null, "navigate", BaseTime.AddMilliseconds(1300)),
+            // Navigate decision so extractor has an action boundary to process
+            new DecisionEvent("aaa", null, "navigate", BaseTime.AddMilliseconds(800)),
             new ActionSubmittedEvent("aaa", "Navigate", NavParams(10f, 0f, 20f, 148),
-                BaseTime.AddMilliseconds(1400)),
+                BaseTime.AddMilliseconds(900)),
             new ActionCompletedEvent("aaa", "Navigate", "Arrived",
-                BaseTime.AddMilliseconds(1500)),
+                BaseTime.AddMilliseconds(1000)),
 
             new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000))
         ];
     }
 
-    // -------------------------------------------------------------------------
-    // GWT-E1': End-to-end nibble combat extraction produces CombatStep with nibble expect
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // GWT-O-E1' — end-to-end target combat → CombatStep with nibble expect
+    //
+    // Trace: target pre-combat; InCombat{true}; baseline; three in-combat bumps;
+    //        a 'wait' decision; RunEnd.
+    // Then CombatStep with KillEnemyDataIds contains 347; Spawn==OverworldEnemies;
+    //      Expect.Predicate == "questVariableLow(65847, 0) >= 3"; Spawn-review TODO present.
+    // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Extract_NibbleCombatWindow_ProducesCombatStep_WithNibbleExpect_GwtE1Prime()
+    public void O_E1Prime_TargetCombatTrace_ProducesCombatStep_WithNibbleExpect()
     {
-        /*
-         * RED: Will fail until Builder rewrites SnapshotState (nibble correlation) and
-         * StepInferenceEngine Rule 2.2 (nibble expect).
-         *
-         * CONTRACT (GWT-E1'): Trace for quest 65847, enemy 347, baseline-first then
-         * three bump-before-kill rounds; a 'wait' decision in the window; RunEnd.
-         * Then Extract yields a CombatStep with:
-         *   - KillEnemyDataIds == [347]
-         *   - Spawn == OverworldEnemies
-         *   - Expect.Predicate == "questVariableLow(65847, 0) >= 3"  ← nibble, NOT byte
-         *   - Todos contains a string mentioning "Spawn" review
-         *
-         * Key: "questVariableLow" not "questVariable" — this is the decisive assertion
-         * that distinguishes nibble (correct) from byte (wrong, deleted).
-         */
-
+        // GIVEN
         var events = BuildNibbleCombatTrace(decisionActionType: "wait", includeSubmitted: false);
-        var extractor = new TraceToQuestExtractor();
 
+        // WHEN
+        var extractor = new TraceToQuestExtractor();
         var result = extractor.Extract(events);
 
+        // THEN
         var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
         var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
 
@@ -204,97 +193,81 @@ public sealed class TraceToQuestExtractorCombatTests
         Assert.Equal(CombatSpawn.OverworldEnemies, combatStep.Spawn);
 
         var expect = Assert.IsType<PredicateExpect>(combatStep.Expect);
-        // Nibble expect — "questVariableLow", NOT the deleted "questVariable"
         Assert.Equal("questVariableLow(65847, 0) >= 3", expect.Predicate);
 
-        // Spawn-review TODO must be present
         Assert.Contains(draft.Todos, t =>
             t.Contains("Spawn", StringComparison.OrdinalIgnoreCase) ||
             t.Contains("combat", StringComparison.OrdinalIgnoreCase));
     }
 
-    // -------------------------------------------------------------------------
-    // GWT-E2': Combat 'wait' decision window is NOT skipped
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // GWT-O-E2' — combat 'wait' decision still emits CombatStep (not skipped)
+    //
+    // Same trace, decision 'wait'. The combat branch fires BEFORE the wait-skip guard.
+    // Then CombatStep emitted; Expect starts with "questVariableLow".
+    // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Extract_CombatWindowWithWaitDecision_StillEmitsCombatStep_GwtE2Prime()
+    public void O_E2Prime_WaitDecision_CombatSpanStillEmitsCombatStep()
     {
-        /*
-         * RED: Will fail until Builder's combat branch fires before the wait-skip guard.
-         *
-         * CONTRACT (GWT-E2'): The combat window's only decision has ActionType=="wait".
-         * The isSkippableAction check must be deferred until after inference returns "combat".
-         * The CombatStep is still emitted.
-         * (This is the same guard as old GWT-E2 but now asserts nibble correlation fires.)
-         */
-
+        // GIVEN
         var events = BuildNibbleCombatTrace(decisionActionType: "wait", includeSubmitted: false);
-        var extractor = new TraceToQuestExtractor();
 
+        // WHEN
+        var extractor = new TraceToQuestExtractor();
         var result = extractor.Extract(events);
 
+        // THEN
         var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
-        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+        var combatStep = draft.Definition.Sequences.SelectMany(s => s.Steps)
+            .OfType<CombatStep>().FirstOrDefault();
 
-        var combatStep = allSteps.OfType<CombatStep>().FirstOrDefault();
         Assert.NotNull(combatStep);
         Assert.Contains(347u, combatStep!.KillEnemyDataIds);
-
-        // Assert nibble expect (not byte)
         var expect = Assert.IsType<PredicateExpect>(combatStep.Expect);
         Assert.StartsWith("questVariableLow", expect.Predicate);
     }
 
-    // -------------------------------------------------------------------------
-    // GWT-E3': Uncorrelated kills (no in-window nibble bump) produce no CombatStep
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // GWT-O-E3' — no target in span → no CombatStep (replaces O3' "outside window")
+    //
+    // Trace: InCombat{true}; baseline; EnemyKilled{347} (no GetTarget{hostile});
+    //        nibble bump in-combat; navigate decision + submitted/completed; RunEnd.
+    // Then no CombatStep (KCT null → inference falls through to navigate/Rule 3).
+    // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Extract_KillsWithNoInWindowNibbleBump_NoCombatStep_GwtE3Prime()
+    public void O_E3Prime_NoTargetInSpan_NoCombatStep()
     {
-        /*
-         * CONTRACT (GWT-E3'): Kill at t=500ms; variable bump at t=1200ms (gap 700ms > 500ms).
-         * No in-window nibble bump → KillCorrelatedTargets empty → inference falls through
-         * to Rule 3 (navigate) → no CombatStep emitted.
-         */
+        // GIVEN
+        var events = BuildNoTargetCombatTrace();
 
-        var events = BuildUncorrelatedKillsTrace();
+        // WHEN
         var extractor = new TraceToQuestExtractor();
-
         var result = extractor.Extract(events);
 
+        // THEN
         var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
         var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
 
         Assert.DoesNotContain(allSteps, s => s is CombatStep);
     }
 
-    // -------------------------------------------------------------------------
-    // GWT-E4': Parity — extractor's CombatStep.Expect.Predicate matches the string
-    // StepInferenceEngine.Infer produces for equivalent live snapshots
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // GWT-O-E4' — LIVE==OFFLINE parity lock (mirror E4')
+    //
+    // Part a: run extractor on the E1' trace → CombatStep.Expect.Predicate + Id.
+    // Part b: build equivalent GameStateSnapshot directly with
+    //         KillCorrelatedTargets={(0,Low):([347],3)}, InCombat, zone 148;
+    //         call StepInferenceEngine.Infer(before, after).
+    // Then inference.StepType=="combat"; extracted predicate == inference.SuggestedExpect;
+    //      both == "questVariableLow(65847, 0) >= 3"; CombatStep.Id == "defeat-347".
+    // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Extract_CombatStep_ExpectPredicate_MatchesStepInferenceEngine_GwtE4Prime()
+    public void O_E4Prime_LiveOfflineParity_SameExpectAndId()
     {
-        /*
-         * RED: Will fail until Builder produces the nibble expect via StepInferenceEngine Rule 2.2.
-         *
-         * CONTRACT (GWT-E4' / D8 parity lock):
-         * The extractor routes combat through StepInferenceEngine.Infer (TraceToQuestExtractor.cs:190)
-         * and StepFactory.Build (TraceToQuestExtractor.cs:208). Both paths share the same
-         * StepInferenceEngine code (ProjectReference). This test pins the parity by:
-         *   a) Running Extract on the GWT-E1' trace → get CombatStep.Expect.Predicate.
-         *   b) Constructing an equivalent GameStateSnapshot directly with NibbleKey(0,Low)=([347],3)
-         *      and calling StepInferenceEngine.Infer to get the expected predicate string.
-         *   c) Asserting a == b.
-         *
-         * Since both a and b go through the same StepInferenceEngine, this is a consistency
-         * test: it catches any divergence if the extractor were to hand-roll the expect string.
-         */
-
-        // Part a: run the extractor
+        // PART A: run extractor
         var events = BuildNibbleCombatTrace(decisionActionType: "wait", includeSubmitted: false);
         var extractor = new TraceToQuestExtractor();
         var result = extractor.Extract(events);
@@ -305,30 +278,33 @@ public sealed class TraceToQuestExtractorCombatTests
             .OfType<CombatStep>()
             .FirstOrDefault();
         Assert.NotNull(combatStep);
-        var extractedPredicateExpect = Assert.IsType<PredicateExpect>(combatStep!.Expect);
-        var extractedPredicate = extractedPredicateExpect.Predicate;
 
-        // Part b: call StepInferenceEngine directly with the equivalent after-snapshot
+        var extractedExpect = Assert.IsType<PredicateExpect>(combatStep!.Expect);
+        var extractedPredicate = extractedExpect.Predicate;
+        var extractedId = combatStep.Id;
+
+        // PART B: call StepInferenceEngine directly with equivalent snapshots
         var activeQuest = new QuestId(QuestId65847);
         var kct = new Dictionary<NibbleKey, KillCorrelation>
         {
             [new NibbleKey(0, NibbleHalf.Low)] = new KillCorrelation([347u], 3)
         };
+
         var afterSnapshot = new GameStateSnapshot(
-            CapturedAt:        BaseTime.AddMilliseconds(2000),
-            Zone:              new ZoneId(148u),
-            Position:          new WorldPosition(10f, 0f, 20f),
-            ActiveQuest:       activeQuest,
-            QuestSequence:     0,
-            QuestFlags:        0u,
-            QuestAccepted:     true,
-            QuestCompleted:    false,
-            LastNpcInteracted: null,
-            LastNpcPosition:   null,
+            CapturedAt:         BaseTime.AddMilliseconds(2000),
+            Zone:               new ZoneId(148u),
+            Position:           new WorldPosition(10f, 0f, 20f),
+            ActiveQuest:        activeQuest,
+            QuestSequence:      0,
+            QuestFlags:         0u,
+            QuestAccepted:      true,
+            QuestCompleted:     false,
+            LastNpcInteracted:  null,
+            LastNpcPosition:    null,
             LastDialoguePrompt: null,
             LastDialogueAnswer: null,
-            InventoryHash:     0u,
-            LastAttuned:       null)
+            InventoryHash:      0u,
+            LastAttuned:        null)
         {
             InCombat = true,
             KillCorrelatedTargets = kct,
@@ -347,29 +323,29 @@ public sealed class TraceToQuestExtractorCombatTests
         Assert.Equal("combat", inference.StepType);
         var liveExpect = inference.SuggestedExpect;
 
-        // Parity assertion
+        // THEN — parity assertions
         Assert.Equal(liveExpect, extractedPredicate);
-        // Belt-and-braces: both must be the nibble form
         Assert.Equal("questVariableLow(65847, 0) >= 3", extractedPredicate);
+        Assert.Equal("defeat-347", extractedId);
     }
 
-    // -------------------------------------------------------------------------
-    // CombatStep Location.Zone comes from CombatStartZone (unchanged behaviour, nibble trace)
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // GWT-O-E-LOCZONE — CombatStep.Location.Zone from CombatStartZone (keep, rebuilt trace)
+    //
+    // GWT-O-E1' trace → CombatStep.Location.Zone == 148.
+    // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
-    public void Extract_CombatStep_LocationZone_FromCombatStartZone()
+    public void O_E_LocZone_CombatStepLocationZone_FromCombatStartZone()
     {
-        /*
-         * CONTRACT: InCombat transitions in zone 148 → CombatStep.Location.Zone == 148.
-         * Unchanged from old test; re-asserted with the nibble trace builder.
-         */
-
+        // GIVEN
         var events = BuildNibbleCombatTrace(decisionActionType: "navigate", includeSubmitted: true);
-        var extractor = new TraceToQuestExtractor();
 
+        // WHEN
+        var extractor = new TraceToQuestExtractor();
         var result = extractor.Extract(events);
 
+        // THEN
         var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
         var combatStep = draft.Definition.Sequences
             .SelectMany(s => s.Steps)
@@ -381,23 +357,21 @@ public sealed class TraceToQuestExtractorCombatTests
         Assert.Equal(148, combatStep.Location!.Zone);
     }
 
-    // -------------------------------------------------------------------------
-    // CombatStep Zone/RequiredZone parity with StepFactory (unchanged behaviour, nibble trace)
-    // -------------------------------------------------------------------------
+    // ─────────────────────────────────────────────────────────────────────────
+    // Zone/RequiredZone parity with StepFactory (keep, rebuilt trace)
+    // ─────────────────────────────────────────────────────────────────────────
 
     [Fact]
     public void Extract_CombatStep_PopulatesZoneAndRequiredZone_MatchingLiveStepFactory()
     {
-        /*
-         * CONTRACT: Zone and RequiredZone are populated as "148" (string form from StepFactory).
-         * Unchanged from old test; re-asserted with the nibble trace builder.
-         */
-
+        // GIVEN
         var events = BuildNibbleCombatTrace(decisionActionType: "navigate", includeSubmitted: true);
-        var extractor = new TraceToQuestExtractor();
 
+        // WHEN
+        var extractor = new TraceToQuestExtractor();
         var result = extractor.Extract(events);
 
+        // THEN
         var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
         var combatStep = draft.Definition.Sequences
             .SelectMany(s => s.Steps)
