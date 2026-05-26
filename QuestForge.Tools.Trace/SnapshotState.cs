@@ -35,13 +35,23 @@ public sealed class SnapshotState
     private List<uint>? _pendingKeyItemsRemoved;
     private uint _lastInventoryHash;
 
-    // Combat correlation state — mirrors SnapshotAggregator.
+    // Combat correlation state — mirrors SnapshotAggregator (target-based span model).
     private bool _inCombat;
     private WorldPosition? _combatStartPosition;
     private int _combatStartZone;
-    private readonly List<(uint DataId, DateTimeOffset At)> _recentKills = new();
-    private readonly List<(NibbleKey Key, int FinalValue, DateTimeOffset At)> _recentNibbleBumps = new();
-    private readonly Dictionary<NibbleKey, (HashSet<uint> DataIds, int FinalValue)> _killCorrelatedTargets = new();
+
+    // Tracks the most-recently targeted BattleNpc regardless of combat state.
+    // Persists across ResetPendingKeyItemDeltas so a pre-combat target is still available
+    // to seed the next span even if Reset runs between targeting and InCombat{true}.
+    private uint? _lastBattleNpcTarget;
+
+    // Distinct hostile targets acquired while _inCombat. Cleared on each false→true InCombat transition.
+    private readonly HashSet<uint> _spanBattleNpcTargets = new();
+
+    // Nibble bumps that occurred while _inCombat. Key → latest (highest) value reached.
+    // Cleared on each false→true InCombat transition.
+    private readonly Dictionary<NibbleKey, int> _spanNibbleBumps = new();
+
     // Baseline for per-index delta detection. Survives ResetPendingKeyItemDeltas.
     private byte[]? _prevQuestVariables;
 
@@ -80,6 +90,26 @@ public sealed class SnapshotState
                 }
                 return true;
 
+            case "GetTarget":
+            {
+                // Only the hostile-object shape is recognised (D1).
+                // Plain numbers and other shapes fall through to return false (unrecognised).
+                if (!ev.Value.HasValue) return false;
+                var val = ev.Value.Value;
+                if (val.ValueKind != JsonValueKind.Object) return false;
+                if (!val.TryGetProperty("kind", out var kindEl)) return false;
+                if (kindEl.GetString() != "hostile") return false;
+                if (!val.TryGetProperty("baseId", out var baseIdEl)) return false;
+                uint baseId;
+                try { baseId = baseIdEl.GetUInt32(); } catch { return false; }
+
+                // Mirror OnBattleNpcTargeted: set unconditionally; add to span if in combat.
+                _lastBattleNpcTarget = baseId;
+                if (_inCombat && baseId != 0)
+                    _spanBattleNpcTargets.Add(baseId);
+                return true;
+            }
+
             case "InCombat":
             {
                 if (!ev.Value.HasValue) return true;
@@ -96,37 +126,22 @@ public sealed class SnapshotState
 
                 if (inCombat && !_inCombat)
                 {
+                    // Mirror OnInCombatChanged: capture → clear → seed.
                     _combatStartPosition = Position;
                     _combatStartZone = (int)Zone.Value;
+                    _spanBattleNpcTargets.Clear();
+                    _spanNibbleBumps.Clear();
+                    if (_lastBattleNpcTarget is { } t)
+                        _spanBattleNpcTargets.Add(t);
                 }
                 _inCombat = inCombat;
                 return true;
             }
 
             case "EnemyKilled":
-            {
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
-                uint dataId = 0;
-                if (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("dataId", out var did))
-                    try { dataId = did.GetUInt32(); } catch { return true; }
-                else
-                    return true;
-
-                if (dataId == 0) return true;
-
-                _recentKills.Add((dataId, ev.At));
-                EvictStale(ev.At);
-
-                // Correlate-on-arrival: look back at buffered nibble bumps within the symmetric window.
-                foreach (var (key, finalValue, bumpAt) in _recentNibbleBumps)
-                {
-                    if (AbsDelta(ev.At, bumpAt) <= SnapshotAggregator.CombatCorrelationWindow)
-                        AddToCorrelation(key, finalValue, dataId);
-                }
-
+                // Recognised no-op (D2): real traces emit this; keep it recognised so the
+                // unrecognised-method count is not inflated. No span mutation.
                 return true;
-            }
 
             case "GetQuestVariables":
             {
@@ -161,8 +176,7 @@ public sealed class SnapshotState
                 var prev = _prevQuestVariables;
                 _prevQuestVariables = newVars;
 
-                EvictStale(ev.At);
-
+                // Mirror OnQuestVariablesUpdated: gate bumps on _inCombat (D3).
                 for (int i = 0; i < newVars.Length; i++)
                 {
                     var n = newVars[i];
@@ -171,20 +185,16 @@ public sealed class SnapshotState
                     var lowUp  = (n & 0x0F) > (p & 0x0F);
                     var highUp = (n >> 4)   > (p >> 4);
 
-                    if (lowUp)
+                    if (lowUp && _inCombat)
                     {
                         var key = new NibbleKey(i, NibbleHalf.Low);
-                        var nibbleValue = n & 0x0F;
-                        _recentNibbleBumps.Add((key, nibbleValue, ev.At));
-                        CorrelateKillsToBump(key, nibbleValue, ev.At);
+                        _spanNibbleBumps[key] = n & 0x0F;
                     }
 
-                    if (highUp)
+                    if (highUp && _inCombat)
                     {
                         var key = new NibbleKey(i, NibbleHalf.High);
-                        var nibbleValue = n >> 4;
-                        _recentNibbleBumps.Add((key, nibbleValue, ev.At));
-                        CorrelateKillsToBump(key, nibbleValue, ev.At);
+                        _spanNibbleBumps[key] = n >> 4;
                     }
                 }
 
@@ -354,15 +364,16 @@ public sealed class SnapshotState
 
     /// <summary>
     /// Clear pending delta lists so the next decision's "after" snapshot sees a clean slate.
-    /// Does NOT clear the running _keyItemCounts or _prevQuestVariables (cross-window continuity).
+    /// Clears span sets (_spanBattleNpcTargets, _spanNibbleBumps) but PRESERVES
+    /// _prevQuestVariables and _lastBattleNpcTarget (cross-window continuity). Mirrors ResetDeltas.
     /// </summary>
     public void ResetPendingKeyItemDeltas()
     {
         _pendingKeyItemsAdded = null;
         _pendingKeyItemsRemoved = null;
-        _recentKills.Clear();
-        _recentNibbleBumps.Clear();
-        _killCorrelatedTargets.Clear();
+        _spanBattleNpcTargets.Clear();
+        _spanNibbleBumps.Clear();
+        // _prevQuestVariables and _lastBattleNpcTarget intentionally preserved.
     }
 
     /// <summary>
@@ -397,53 +408,15 @@ public sealed class SnapshotState
         return false;
     }
 
+    // Mirror SnapshotAggregator.BuildKillCorrelatedTargets (D5).
     private IReadOnlyDictionary<NibbleKey, KillCorrelation>? BuildKillCorrelatedTargets()
     {
-        if (_killCorrelatedTargets.Count == 0) return null;
-        var result = new Dictionary<NibbleKey, KillCorrelation>(_killCorrelatedTargets.Count);
-        foreach (var (key, (dataIds, finalValue)) in _killCorrelatedTargets)
-        {
-            if (dataIds.Count == 0) continue;
-            result[key] = new KillCorrelation(
-                dataIds.OrderBy(id => id).ToList(),
-                finalValue);
-        }
+        if (_spanNibbleBumps.Count == 0 || _spanBattleNpcTargets.Count == 0) return null;
+        var dataIds = _spanBattleNpcTargets.OrderBy(id => id).ToList();
+        var result = new Dictionary<NibbleKey, KillCorrelation>(_spanNibbleBumps.Count);
+        foreach (var (key, value) in _spanNibbleBumps)
+            result[key] = new KillCorrelation(dataIds, value);
         return result.Count > 0 ? result : null;
-    }
-
-    private void EvictStale(DateTimeOffset now)
-    {
-        var cutoff = now - SnapshotAggregator.CombatCorrelationWindow;
-        _recentKills.RemoveAll(k => k.At < cutoff);
-        _recentNibbleBumps.RemoveAll(b => b.At < cutoff);
-    }
-
-    private static TimeSpan AbsDelta(DateTimeOffset a, DateTimeOffset b)
-    {
-        var d = a - b;
-        return d < TimeSpan.Zero ? -d : d;
-    }
-
-    private void CorrelateKillsToBump(NibbleKey key, int finalValue, DateTimeOffset bumpAt)
-    {
-        foreach (var (dataId, killAt) in _recentKills)
-        {
-            if (AbsDelta(bumpAt, killAt) <= SnapshotAggregator.CombatCorrelationWindow)
-                AddToCorrelation(key, finalValue, dataId);
-        }
-
-        if (!_killCorrelatedTargets.TryGetValue(key, out var bucket))
-            _killCorrelatedTargets[key] = (new HashSet<uint>(), finalValue);
-        else
-            _killCorrelatedTargets[key] = (bucket.DataIds, finalValue);
-    }
-
-    private void AddToCorrelation(NibbleKey key, int finalValue, uint dataId)
-    {
-        if (!_killCorrelatedTargets.TryGetValue(key, out var bucket))
-            bucket = (new HashSet<uint>(), finalValue);
-        bucket.DataIds.Add(dataId);
-        _killCorrelatedTargets[key] = (bucket.DataIds, finalValue);
     }
 
     /// <summary>Capture an immutable snapshot at the given timestamp.</summary>
