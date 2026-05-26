@@ -233,6 +233,71 @@ public class PredicateValidatorTests
         Assert.Equal("seq:0/step:the-branch/branches[0]/when", errors[0].Location);
     }
 
+    // =========================================================================
+    // questVariableLow / questVariableHigh end-to-end validator tests
+    // (VAL-N* from NIBBLE_PREDICATES_PLAN.md)
+    // RED: both fail until Builder adds the two nibble registry entries +
+    //      widens the checker gate (the PredicateValidator itself is unchanged).
+    // =========================================================================
+
+    [Fact]
+    public void QuestVariableLow_ValidIndex_ProducesNoErrors()
+    {
+        /*
+         * RED: Fails with predicate/unknown-function until Builder adds the questVariableLow
+         *      registry entry. The generic PredicateValidator needs NO change (D4).
+         *
+         * CONTRACT (VAL-N1): A quest with a step whose Expect is
+         *   "questVariableLow(65847, 0) >= 3" → Validate returns no errors.
+         *   Proves the generic validator accepts the new function with no PredicateValidator change.
+         */
+        var quest = QuestBuilder.Valid(sequences:
+        [
+            QuestBuilder.Seq(0, new TravelStep
+            {
+                Id          = "step-a",
+                Destination = new TravelDestination(128),
+                Expect      = new PredicateExpect { Predicate = "questVariableLow(65847, 0) >= 3" }
+            })
+        ]);
+
+        Assert.Empty(Validate(quest));
+    }
+
+    [Fact]
+    public void QuestVariableHigh_OutOfRangeIndex_ReportsPredicateError()
+    {
+        /*
+         * RED: Fails with predicate/unknown-function (wrong code) until Builder adds the
+         *      questVariableHigh registry entry AND widens the checker gate.
+         *      The generic PredicateValidator translates the raw checker code to the
+         *      prefixed "predicate/quest-variable-index-out-of-range" automatically (D4).
+         *
+         * CONTRACT (VAL-N2): A quest with a step whose Expect is
+         *   "questVariableHigh(65847, 6) >= 1" → exactly one error,
+         *   Code == "predicate/quest-variable-index-out-of-range",
+         *   Location is "seq:0/step:step-a/expect",
+         *   StepId == "step-a".
+         *   This is the CI behaviour change: a questforge-data PR with an out-of-range
+         *   nibble index goes red with predicate/quest-variable-index-out-of-range.
+         */
+        var quest = QuestBuilder.Valid(sequences:
+        [
+            QuestBuilder.Seq(0, new TravelStep
+            {
+                Id          = "step-a",
+                Destination = new TravelDestination(128),
+                Expect      = new PredicateExpect { Predicate = "questVariableHigh(65847, 6) >= 1" }
+            })
+        ]);
+
+        var errors = Validate(quest).ToList();
+        Assert.Equal(1, errors.Count);
+        Assert.Equal("predicate/quest-variable-index-out-of-range", errors[0].Code);
+        Assert.Equal("seq:0/step:step-a/expect", errors[0].Location);
+        Assert.Equal("step-a", errors[0].StepId);
+    }
+
     [Fact]
     public void StepInsideBranch_ExpectIsValidated()
     {
