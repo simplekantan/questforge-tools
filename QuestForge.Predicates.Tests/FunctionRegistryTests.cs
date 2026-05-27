@@ -10,15 +10,14 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains31Functions()
+    public void All_Contains34Functions()
     {
         /*
-         * RED: FunctionRegistry.All.Count is currently 29. Fails until Builder adds
-         *      questVariableLow and questVariableHigh (count goes 29 → 31).
-         *
-         * CONTRACT (RG-N3): FunctionRegistry.All.Count == 31 after the two nibble entries land.
+         * CONTRACT (RG-N3 / RG-J0): FunctionRegistry.All.Count == 34 after the two nibble
+         *   entries (questVariableLow, questVariableHigh) and the three job entries
+         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic) land.
          */
-        Assert.Equal(31, FunctionRegistry.All.Count);
+        Assert.Equal(34, FunctionRegistry.All.Count);
     }
 
     [Fact]
