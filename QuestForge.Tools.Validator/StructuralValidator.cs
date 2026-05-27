@@ -447,6 +447,13 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                             stepId: combat.Id));
                     break;
 
+                case WaitStep wait:
+                    if (wait.Seconds <= 0)
+                        errors.Add(E(ctx, "structural/wait-seconds-nonpositive", scope.ToString(),
+                            $"Step '{wait.Id}': wait 'seconds' must be > 0 (got {wait.Seconds}); a non-positive wait completes immediately.",
+                            stepId: wait.Id, severity: Severity.Warning));
+                    break;
+
                 case BranchStep branch:
                     for (var i = 0; i < branch.Branches.Length; i++)
                     {
