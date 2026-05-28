@@ -468,13 +468,28 @@ public sealed class SnapshotState
         _spanNibbleBumps.Clear();
         // _prevQuestVariables and _lastBattleNpcTarget intentionally preserved.
         _spanItemDeltas.Clear();
-        _shopOpen              = false;
         _purchaseSpanStarted   = false;
         _purchaseBaselineGil   = null;
         _purchaseBaselineSeals = null;
         _spanActiveGcCategory  = null;
         _spanActiveGcRankTier  = null;
         // _currentGil and _currentSeals intentionally preserved as latest-known balances.
+
+        // Offline mirror of the questforge#93 (G6) live fix: _shopOpen reflects the trace's
+        // view of the addon state, NOT the span lifecycle. The extractor calls this between
+        // each emitted purchase-item step; if the trace's recording window contains multiple
+        // purchases at the same vendor with no ShopOpened{false} between them, the OLD
+        // force-clear (_shopOpen=false) silenced every subsequent VendorItemCount and the
+        // extractor emitted only the first step. If shop is still open at reset time,
+        // restart the span at the current balances so the next VendorItemCount registers.
+        // GC axes are left null and refill from the next ShopOpened payload (or stay null
+        // for the trace's remainder if there is no further ShopOpened).
+        if (_shopOpen)
+        {
+            _purchaseSpanStarted   = true;
+            _purchaseBaselineGil   = _currentGil;
+            _purchaseBaselineSeals = _currentSeals;
+        }
     }
 
     /// <summary>

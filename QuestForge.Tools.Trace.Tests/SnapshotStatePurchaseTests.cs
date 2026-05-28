@@ -205,6 +205,11 @@ public sealed class SnapshotStatePurchaseTests
         var pdBefore = state.ToSnapshot(T_500).PurchaseDetected;
         Assert.NotNull(pdBefore);
 
+        // Shop closes before the next recording window begins. Mirrors the realistic
+        // flow: buy → close shop → reset. The separate
+        // ResetPendingKeyItemDeltasWhileShopOpen scenario is covered below.
+        state.Apply(ShopOpenedObs(false, T_400));
+
         // PART A: reset clears the purchase span
         state.ResetPendingKeyItemDeltas();
 
@@ -322,5 +327,72 @@ public sealed class SnapshotStatePurchaseTests
         Assert.NotNull(pd);
         Assert.Null(pd!.ActiveGcCategory);
         Assert.Null(pd.ActiveGcRankTier);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // ResetPendingKeyItemDeltasWhileShopOpen — offline mirror of the live
+    // ResetDeltas-while-shop-open fix shipped in questforge#93 (G6 follow-up).
+    //
+    // TraceToQuestExtractor calls ResetPendingKeyItemDeltas after each emitted
+    // step. If a trace's recording window contains multiple purchases at the
+    // same vendor with no ShopOpened{false} between them, the OLD behavior
+    // force-cleared _shopOpen=false, silenced every subsequent
+    // VendorItemCount, and emitted only the first purchase-item step.
+    // The fix: _shopOpen reflects the trace's view of the addon state, not
+    // the span lifecycle. If shop was still open at reset time, restart the
+    // span at the current balances so the next item observation is captured.
+    // ─────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ResetPendingKeyItemDeltasWhileShopOpen_RestartsSpan_NextBuyIsDetected()
+    {
+        var state = new SnapshotState(BuyQuest);
+
+        // First purchase span: shop opens, item bought.
+        state.Apply(CurrencyBalanceObs(10_000L, 0, T_Zero));
+        state.Apply(ShopOpenedObs(true, T_100));
+        state.Apply(VendorItemCountObs(Item, 1, T_200));
+        state.Apply(CurrencyBalanceObs(9_000L, 0, T_300));
+
+        // Sanity: first purchase is detected before the reset.
+        var pdBefore = state.ToSnapshot(T_300).PurchaseDetected;
+        Assert.NotNull(pdBefore);
+
+        // Reset runs while the trace's view of the shop is still open
+        // (no ShopOpened{false} event has arrived yet). This mirrors the
+        // extractor's behavior between consecutive purchase-item emissions
+        // when the player buys multiple items in one shop visit.
+        state.ResetPendingKeyItemDeltas();
+
+        // Second purchase on the same already-open shop: no fresh ShopOpened
+        // event fires (it never closed). The aggregator must still capture it.
+        state.Apply(VendorItemCountObs(Item, 1, T_400));
+        state.Apply(CurrencyBalanceObs(8_500L, 0, T_500));
+
+        var pdAfter = state.ToSnapshot(T_900).PurchaseDetected;
+        Assert.NotNull(pdAfter);
+        Assert.True(pdAfter!.ItemDeltas.ContainsKey(Item),
+            $"PurchaseDetected.ItemDeltas must contain {Item} after reset-while-open. Got: {FormatPd(pdAfter)}");
+        Assert.Equal(1, pdAfter.ItemDeltas[Item]);
+        Assert.Equal(500L, pdAfter.GilDropped);  // baseline=9000 (re-captured at reset), current=8500
+    }
+
+    [Fact]
+    public void ResetPendingKeyItemDeltasWhileShopClosed_DoesNotResurrectSpan()
+    {
+        // Symmetric guard: if the trace's view of the shop is closed at
+        // reset time, the span must stay cleared. A subsequent VendorItemCount
+        // with no intervening ShopOpened{true} must NOT register.
+        var state = new SnapshotState(BuyQuest);
+
+        state.Apply(CurrencyBalanceObs(10_000L, 0, T_Zero));
+        // Shop is NOT open. Reset clears everything.
+        state.ResetPendingKeyItemDeltas();
+
+        // No ShopOpened{true} fires; a stray VendorItemCount arrives.
+        state.Apply(VendorItemCountObs(Item, 1, T_100));
+        state.Apply(CurrencyBalanceObs(9_000L, 0, T_200));
+
+        Assert.Null(state.ToSnapshot(T_900).PurchaseDetected);
     }
 }
