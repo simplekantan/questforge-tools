@@ -460,6 +460,18 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                         errors.Add(E(ctx, "structural/purchase-npc-id-zero", scope.ToString(),
                             $"Step '{purchase.Id}': vendor 'target.npcId' is 0; a valid NPC id is required.",
                             stepId: purchase.Id));
+                    if (purchase.GcCategory.HasValue && (purchase.GcCategory.Value < 0 || purchase.GcCategory.Value > 3))
+                        errors.Add(E(ctx, "structural/purchase-gc-category-out-of-range", scope.ToString(),
+                            $"Step '{purchase.Id}': 'gcCategory' must be 0..3 (0=Weapons, 1=Armor, 2=Materiel, 3=Materials); got {purchase.GcCategory.Value}.",
+                            stepId: purchase.Id));
+                    if (purchase.GcRankTier.HasValue && (purchase.GcRankTier.Value < 0 || purchase.GcRankTier.Value > 2))
+                        errors.Add(E(ctx, "structural/purchase-gc-rank-tier-out-of-range", scope.ToString(),
+                            $"Step '{purchase.Id}': 'gcRankTier' must be 0..2 (0=lowest visible, 2=highest); got {purchase.GcRankTier.Value}.",
+                            stepId: purchase.Id));
+                    if (purchase.Currency != PurchaseCurrency.GcSeals && (purchase.GcCategory.HasValue || purchase.GcRankTier.HasValue))
+                        errors.Add(E(ctx, "structural/purchase-gc-fields-on-gil", scope.ToString(),
+                            $"Step '{purchase.Id}': 'gcCategory'/'gcRankTier' are ignored when 'currency' is not 'gcSeals'; remove them or set 'currency: gcSeals'.",
+                            stepId: purchase.Id, severity: Severity.Warning));
                     break;
 
                 case WaitStep wait:

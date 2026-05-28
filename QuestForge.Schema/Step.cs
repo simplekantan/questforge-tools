@@ -222,4 +222,8 @@ public class PurchaseItemStep : Step
     public uint ItemId { get; init; }
     public int Quantity { get; init; } = 1;
     public PurchaseCurrency Currency { get; init; } = PurchaseCurrency.Gil;
+    /// <summary>GC shop category tab index (0=Weapons, 1=Armor, 2=Materiel, 3=Materials); valid range 0..3.</summary>
+    public int? GcCategory { get; init; }
+    /// <summary>GC rank tier row within the selected category (0=lowest, 2=highest); valid range 0..2.</summary>
+    public int? GcRankTier { get; init; }
 }
