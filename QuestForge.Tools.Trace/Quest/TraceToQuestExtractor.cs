@@ -214,6 +214,16 @@ public sealed class TraceToQuestExtractor
                 continue;
             }
 
+            if (inference.StepType == "purchase-item")
+            {
+                step = StepFactory.Build("purchase-item", stepId, inference.SuggestedExpect, after, before);
+                todos.Add($"purchase-item step {stepId}: review item id / quantity / currency");
+                var groupKeyP = before.QuestSequence;
+                workingList.Add((groupKeyP, step));
+                snapshot.ResetPendingKeyItemDeltas();
+                continue;
+            }
+
             // After inference, apply the skippable-action check (wait, terminal).
             // We deferred this so inference could run on the pre-roll correlation.
             if (isSkippableAction)

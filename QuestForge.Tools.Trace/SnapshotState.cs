@@ -35,6 +35,15 @@ public sealed class SnapshotState
     private List<uint>? _pendingKeyItemsRemoved;
     private uint _lastInventoryHash;
 
+    // Purchase span state — mirrors SnapshotAggregator purchase span fields exactly.
+    private bool _shopOpen;
+    private bool _purchaseSpanStarted;
+    private long? _purchaseBaselineGil;
+    private int? _purchaseBaselineSeals;
+    private long _currentGil;
+    private int _currentSeals;
+    private readonly Dictionary<uint, int> _spanItemDeltas = new();
+
     // Combat correlation state — mirrors SnapshotAggregator (target-based span model).
     private bool _inCombat;
     private WorldPosition? _combatStartPosition;
@@ -142,6 +151,66 @@ public sealed class SnapshotState
                 // Recognised no-op (D2): real traces emit this; keep it recognised so the
                 // unrecognised-method count is not inflated. No span mutation.
                 return true;
+
+            case "CurrencyBalance":
+            {
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                if (val.ValueKind != JsonValueKind.Object) return true;
+                try
+                {
+                    if (val.TryGetProperty("gil", out var gilEl))
+                        _currentGil = gilEl.GetInt64();
+                    if (val.TryGetProperty("seals", out var sealsEl))
+                        _currentSeals = sealsEl.GetInt32();
+                }
+                catch { }
+                return true;
+            }
+
+            case "ShopOpened":
+            {
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                bool open;
+                if (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False)
+                    open = val.GetBoolean();
+                else if (val.ValueKind == JsonValueKind.Object
+                    && val.TryGetProperty("value", out var bv)
+                    && (bv.ValueKind == JsonValueKind.True || bv.ValueKind == JsonValueKind.False))
+                    open = bv.GetBoolean();
+                else
+                    return true;
+
+                if (open && !_shopOpen)
+                {
+                    _purchaseSpanStarted   = true;
+                    _purchaseBaselineGil   = _currentGil;
+                    _purchaseBaselineSeals = _currentSeals;
+                    _spanItemDeltas.Clear();
+                }
+                _shopOpen = open;
+                return true;
+            }
+
+            case "VendorItemCount":
+            {
+                if (!ev.Value.HasValue) return true;
+                var val = ev.Value.Value;
+                if (val.ValueKind != JsonValueKind.Object) return true;
+                if (!_purchaseSpanStarted) return true;
+                try
+                {
+                    if (val.TryGetProperty("itemId", out var idEl) && val.TryGetProperty("count", out var cntEl))
+                    {
+                        var itemId = idEl.GetUInt32();
+                        var count  = cntEl.GetInt32();
+                        _spanItemDeltas[itemId] = _spanItemDeltas.GetValueOrDefault(itemId) + count;
+                    }
+                }
+                catch { }
+                return true;
+            }
 
             case "GetQuestVariables":
             {
@@ -366,6 +435,8 @@ public sealed class SnapshotState
     /// Clear pending delta lists so the next decision's "after" snapshot sees a clean slate.
     /// Clears span sets (_spanBattleNpcTargets, _spanNibbleBumps) but PRESERVES
     /// _prevQuestVariables and _lastBattleNpcTarget (cross-window continuity). Mirrors ResetDeltas.
+    /// Also clears the purchase span so PurchaseDetected is null for the next window;
+    /// preserves _currentGil/_currentSeals as the latest-known balances.
     /// </summary>
     public void ResetPendingKeyItemDeltas()
     {
@@ -374,6 +445,12 @@ public sealed class SnapshotState
         _spanBattleNpcTargets.Clear();
         _spanNibbleBumps.Clear();
         // _prevQuestVariables and _lastBattleNpcTarget intentionally preserved.
+        _spanItemDeltas.Clear();
+        _shopOpen              = false;
+        _purchaseSpanStarted   = false;
+        _purchaseBaselineGil   = null;
+        _purchaseBaselineSeals = null;
+        // _currentGil and _currentSeals intentionally preserved as latest-known balances.
     }
 
     /// <summary>
@@ -408,6 +485,17 @@ public sealed class SnapshotState
         return false;
     }
 
+    // Mirror SnapshotAggregator.BuildPurchaseDetected.
+    private PurchaseDetection? BuildPurchaseDetected()
+    {
+        if (!_purchaseSpanStarted) return null;
+        return new PurchaseDetection(
+            ShopWasOpen: true,
+            ItemDeltas: new Dictionary<uint, int>(_spanItemDeltas),
+            GilDropped: Math.Max(0L, (_purchaseBaselineGil ?? _currentGil) - _currentGil),
+            SealsDropped: Math.Max(0, (_purchaseBaselineSeals ?? _currentSeals) - _currentSeals));
+    }
+
     // Mirror SnapshotAggregator.BuildKillCorrelatedTargets (D5).
     private IReadOnlyDictionary<NibbleKey, KillCorrelation>? BuildKillCorrelatedTargets()
     {
@@ -432,7 +520,8 @@ public sealed class SnapshotState
             InCombat = _inCombat,
             KillCorrelatedTargets = BuildKillCorrelatedTargets(),
             CombatStartPosition = _combatStartPosition,
-            CombatStartZone = _combatStartZone
+            CombatStartZone = _combatStartZone,
+            PurchaseDetected = BuildPurchaseDetected()
         };
 
     /// <summary>
@@ -451,7 +540,8 @@ public sealed class SnapshotState
             InCombat = _inCombat,
             KillCorrelatedTargets = BuildKillCorrelatedTargets(),
             CombatStartPosition = _combatStartPosition,
-            CombatStartZone = _combatStartZone
+            CombatStartZone = _combatStartZone,
+            PurchaseDetected = BuildPurchaseDetected()
         };
 
     /// <summary>

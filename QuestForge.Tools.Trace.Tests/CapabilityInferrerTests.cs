@@ -794,6 +794,41 @@ public sealed class CapabilityInferrerTests
         Assert.Contains("step:purchase-item", caps);
     }
 
+    // =========================================================================
+    // Follow-up — WaitStep capability inference (pre-existing gap from WaitStep slice)
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithWaitStep_EmitsStepWait()
+    {
+        // CONTRACT: a QuestDefinition with one WaitStep emits "step:wait" — closes the
+        // pre-existing gap where WaitStep was missing from CapabilityInferrer.StepCapabilities.
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99101u,
+            Name              = "Wait Step Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps    = [new WaitStep { Id = "wait-3s", Seconds = 3 }]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:wait", caps);
+    }
+
     [Fact]
     public void Infer_QuestWithCutsceneStep_EmitsStepCutscene()
     {
