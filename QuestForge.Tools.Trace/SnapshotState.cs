@@ -44,6 +44,12 @@ public sealed class SnapshotState
     private int _currentSeals;
     private readonly Dictionary<uint, int> _spanItemDeltas = new();
 
+    // G5b — last non-null GC axes observed during the open span; mirror of
+    // SnapshotAggregator._spanActiveGcCategory / _spanActiveGcRankTier.
+    // "Last seen non-null wins" — a null observation does NOT clear a prior value.
+    private int? _spanActiveGcCategory;
+    private int? _spanActiveGcRankTier;
+
     // Combat correlation state — mirrors SnapshotAggregator (target-based span model).
     private bool _inCombat;
     private WorldPosition? _combatStartPosition;
@@ -173,22 +179,38 @@ public sealed class SnapshotState
                 if (!ev.Value.HasValue) return true;
                 var val = ev.Value.Value;
                 bool open;
+                JsonElement? objPayload = null;
                 if (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False)
                     open = val.GetBoolean();
                 else if (val.ValueKind == JsonValueKind.Object
                     && val.TryGetProperty("value", out var bv)
                     && (bv.ValueKind == JsonValueKind.True || bv.ValueKind == JsonValueKind.False))
+                {
                     open = bv.GetBoolean();
+                    objPayload = val;
+                }
                 else
                     return true;
 
+                // Parse optional GC sibling keys (G5b); null on missing key, JSON null, or wrong type.
+                var cat  = objPayload.HasValue ? ReadOptionalInt(objPayload.Value, "activeGcCategory")  : null;
+                var tier = objPayload.HasValue ? ReadOptionalInt(objPayload.Value, "activeGcRankTier")   : null;
+
                 if (open && !_shopOpen)
                 {
+                    // Clear previous span's GC axes before starting a fresh span.
+                    _spanActiveGcCategory  = null;
+                    _spanActiveGcRankTier  = null;
                     _purchaseSpanStarted   = true;
                     _purchaseBaselineGil   = _currentGil;
                     _purchaseBaselineSeals = _currentSeals;
                     _spanItemDeltas.Clear();
                 }
+
+                // Last-seen non-null wins.
+                if (cat  is not null) _spanActiveGcCategory = cat;
+                if (tier is not null) _spanActiveGcRankTier = tier;
+
                 _shopOpen = open;
                 return true;
             }
@@ -450,6 +472,8 @@ public sealed class SnapshotState
         _purchaseSpanStarted   = false;
         _purchaseBaselineGil   = null;
         _purchaseBaselineSeals = null;
+        _spanActiveGcCategory  = null;
+        _spanActiveGcRankTier  = null;
         // _currentGil and _currentSeals intentionally preserved as latest-known balances.
     }
 
@@ -490,10 +514,20 @@ public sealed class SnapshotState
     {
         if (!_purchaseSpanStarted) return null;
         return new PurchaseDetection(
-            ShopWasOpen: true,
-            ItemDeltas: new Dictionary<uint, int>(_spanItemDeltas),
-            GilDropped: Math.Max(0L, (_purchaseBaselineGil ?? _currentGil) - _currentGil),
-            SealsDropped: Math.Max(0, (_purchaseBaselineSeals ?? _currentSeals) - _currentSeals));
+            ShopWasOpen:      true,
+            ItemDeltas:       new Dictionary<uint, int>(_spanItemDeltas),
+            GilDropped:       Math.Max(0L, (_purchaseBaselineGil   ?? _currentGil)   - _currentGil),
+            SealsDropped:     Math.Max(0,  (_purchaseBaselineSeals ?? _currentSeals)  - _currentSeals),
+            ActiveGcCategory: _spanActiveGcCategory,
+            ActiveGcRankTier: _spanActiveGcRankTier);
+    }
+
+    private static int? ReadOptionalInt(JsonElement parent, string key)
+    {
+        if (!parent.TryGetProperty(key, out var prop)) return null;
+        if (prop.ValueKind == JsonValueKind.Null) return null;
+        if (prop.ValueKind != JsonValueKind.Number) return null;
+        return prop.TryGetInt32(out var v) ? v : (int?)null;
     }
 
     // Mirror SnapshotAggregator.BuildKillCorrelatedTargets (D5).
