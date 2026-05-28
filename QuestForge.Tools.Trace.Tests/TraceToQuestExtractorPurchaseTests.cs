@@ -239,4 +239,107 @@ public sealed class TraceToQuestExtractorPurchaseTests
 
         Assert.DoesNotContain(allSteps, s => s is PurchaseItemStep);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // G-O2 (refined) — extractor emits PurchaseItemStep with GcCategory==2 and
+    //                  GcRankTier==1 when ShopOpened carries GC sibling keys.
+    //
+    // RED reason: SnapshotState does not yet parse activeGcCategory/activeGcRankTier
+    // from the ShopOpened payload, so the projection's ActiveGc fields stay null and
+    // StepFactory emits GcCategory==null / GcRankTier==null even though the trace had
+    // the keys.
+    // ─────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void GO2_Refined_ExtractorEmitsStepWithGcAxes()
+    {
+        // GIVEN — PE1-shaped trace, verbatim, but ShopOpened{true} carries GC sibling keys
+        var shopOpenedWithGc = JsonSerializer.SerializeToElement(
+            new { value = true, activeGcCategory = (int?)2, activeGcRankTier = (int?)1 });
+
+        var events = new List<TraceEvent>
+        {
+            new RunStartEvent("aaa", QuestId70001, 1u, BaseTime),
+
+            // Zone + position (mirrors PE1 exactly)
+            ObsMs("GetPlayerZone",     null, ZoneValue(128u),             100),
+            ObsMs("GetPlayerPosition", null, PositionValue(10f, 0f, 20f), 150),
+
+            // Currency seed before shop opens
+            ObsMs("CurrencyBalance", null, CurrencyBalanceValue(10_000L, 0), 250),
+
+            // Shop opens — G5 payload with GC axes (2, 1)
+            new ObservationEvent("aaa", "ShopOpened", null, shopOpenedWithGc,
+                BaseTime.AddMilliseconds(300)),
+
+            // Item count rose
+            ObsMs("VendorItemCount", null, VendorItemCountValue(ItemId1601, 1), 350),
+
+            // Gil fell
+            ObsMs("CurrencyBalance", null, CurrencyBalanceValue(9_000L, 0), 400),
+
+            // Shop closed — span retained
+            ObsMs("ShopOpened", null, ShopOpenedValue(false), 450),
+
+            // Decision + interact action (mirrors PE1 exactly)
+            new DecisionEvent("aaa", null, "wait", BaseTime.AddMilliseconds(500)),
+
+            new ActionSubmittedEvent(
+                RunId: "aaa",
+                ActionType: "interact",
+                Parameters: JsonSerializer.SerializeToElement(new { target = VendorNpcId }),
+                At: BaseTime.AddMilliseconds(510)),
+
+            new ActionCompletedEvent(
+                RunId: "aaa",
+                ActionType: "interact",
+                Outcome: "ok",
+                At: BaseTime.AddMilliseconds(520)),
+
+            new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000))
+        };
+
+        // WHEN
+        var extractor = new TraceToQuestExtractor();
+        var result = extractor.Extract(events);
+
+        // THEN
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var allSteps = draft.Definition.Sequences.SelectMany(s => s.Steps).ToList();
+
+        var purchaseStep = allSteps.OfType<PurchaseItemStep>().FirstOrDefault();
+        Assert.NotNull(purchaseStep);
+
+        // GC axes must be populated from the ShopOpened sibling keys
+        Assert.Equal(2, purchaseStep!.GcCategory);
+        Assert.Equal(1, purchaseStep.GcRankTier);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // G-O3a extractor companion — legacy trace (no GC keys in ShopOpened) emits
+    // PurchaseItemStep with both GC fields null.
+    //
+    // Regression guard: PE1 already verifies the step is emitted; this verifies
+    // the GC fields are null (not some non-null default) when the payload has no GC keys.
+    // ─────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void GO3a_Extractor_LegacyTrace_EmitsNullGcFields()
+    {
+        // GIVEN — standard PE1 trace (ShopOpened uses legacy {value:bool} shape, no GC keys)
+        var events = BuildPurchaseTrace(decisionActionType: "wait");
+
+        // WHEN
+        var extractor = new TraceToQuestExtractor();
+        var result = extractor.Extract(events);
+
+        // THEN
+        var draft = Assert.IsType<Result<QuestDraftResult>.Success>(result).Value;
+        var purchaseStep = draft.Definition.Sequences
+            .SelectMany(s => s.Steps)
+            .OfType<PurchaseItemStep>()
+            .FirstOrDefault();
+
+        Assert.NotNull(purchaseStep);
+        Assert.Null(purchaseStep!.GcCategory);
+        Assert.Null(purchaseStep.GcRankTier);
+    }
 }

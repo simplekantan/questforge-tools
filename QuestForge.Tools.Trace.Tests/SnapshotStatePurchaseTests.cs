@@ -222,4 +222,105 @@ public sealed class SnapshotStatePurchaseTests
         Assert.Equal(0L, pdAfterReopen!.GilDropped);
         Assert.Equal(0, pdAfterReopen.SealsDropped);
     }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // G-O1 (refined) — ShopOpened with GC axis sibling keys: projection carries
+    //                  ActiveGcCategory and ActiveGcRankTier; also confirms Apply
+    //                  returns true (recognised-no-op discipline on new sibling keys).
+    //
+    // RED reason: SnapshotState.ShopOpened case does not yet peek activeGcCategory /
+    // activeGcRankTier sibling keys; BuildPurchaseDetected does not forward them.
+    // ─────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void GO1_Refined_ShopOpenedWithGcAxes_ProjectionPopulatesActiveGc()
+    {
+        // GIVEN
+        var state = new SnapshotState(BuyQuest);
+
+        // Seed pre-open balance (becomes baseline)
+        state.Apply(CurrencyBalanceObs(10_000L, 0, T_Zero));
+
+        // Shop opens — G5 payload: value=true plus GC sibling keys (2, 1)
+        var shopOpenedValue = JsonSerializer.SerializeToElement(
+            new { value = true, activeGcCategory = (int?)2, activeGcRankTier = (int?)1 });
+        var shopOpenedEvent = ObsAt("ShopOpened", null, shopOpenedValue, T_100);
+        var applyResult = state.Apply(shopOpenedEvent);
+
+        // Item count rose
+        state.Apply(VendorItemCountObs(Item, 1, T_200));
+
+        // Gil fell
+        state.Apply(CurrencyBalanceObs(9_000L, 0, T_300));
+
+        // THEN — Apply returned true (recognised-no-op: sibling keys don't break recognition)
+        Assert.True(applyResult, "Apply must return true for ShopOpened with GC sibling keys (recognised event)");
+
+        // THEN — projection has item/gil deltas (basic purchase signal)
+        var pd = state.ToSnapshot(T_900).PurchaseDetected;
+        Assert.NotNull(pd);
+        Assert.True(pd!.ItemDeltas.ContainsKey(Item),
+            $"ItemDeltas must contain {Item}. Got: {FormatPd(pd)}");
+        Assert.Equal(1, pd.ItemDeltas[Item]);
+        Assert.Equal(1000L, pd.GilDropped);
+
+        // THEN — GC axes populated from sibling keys
+        Assert.Equal(2, pd.ActiveGcCategory);
+        Assert.Equal(1, pd.ActiveGcRankTier);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // G-O3a (refined) — legacy ShopOpened payload {value: true} with NO GC keys;
+    //                   projection must have both GC axes null (pre-G5 traces).
+    //
+    // This may pass without Builder work if BuildPurchaseDetected defaults to null —
+    // kept as a regression guard.
+    // ─────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void GO3a_Refined_LegacyShopOpenedPayload_ProjectsNullAxes()
+    {
+        // GIVEN — legacy payload: { value: true } — no GC sibling keys at all
+        var state = new SnapshotState(BuyQuest);
+
+        state.Apply(CurrencyBalanceObs(10_000L, 0, T_Zero));
+        state.Apply(ShopOpenedObs(true, T_100));  // existing helper — legacy shape
+        state.Apply(VendorItemCountObs(Item, 1, T_200));
+        state.Apply(CurrencyBalanceObs(9_000L, 0, T_300));
+
+        // THEN — GC axes must both be null (keys absent → no GC context)
+        var pd = state.ToSnapshot(T_900).PurchaseDetected;
+        Assert.NotNull(pd);
+        Assert.Null(pd!.ActiveGcCategory);
+        Assert.Null(pd.ActiveGcRankTier);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // G-O3b (refined) — G5 payload with both GC keys present but null-valued:
+    //                   { value: true, activeGcCategory: null, activeGcRankTier: null }.
+    //                   Projection must have both GC axes null (probe failed quietly).
+    //
+    // This may pass without Builder work for the same reason as G-O3a.
+    // ─────────────────────────────────────────────────────────────────────────
+    [Fact]
+    public void GO3b_Refined_NullValuedAxesPayload_ProjectsNullAxes()
+    {
+        // GIVEN — G5 plugin payload, probe in fail-quiet mode: keys present, values null
+        var state = new SnapshotState(BuyQuest);
+
+        state.Apply(CurrencyBalanceObs(10_000L, 0, T_Zero));
+
+        // Construct the null-keyed payload explicitly; (int?) ensures null serialises
+        // as JSON null (key present, value null) rather than being omitted.
+        var nullAxesValue = JsonSerializer.SerializeToElement(
+            new { value = true, activeGcCategory = (int?)null, activeGcRankTier = (int?)null });
+        state.Apply(ObsAt("ShopOpened", null, nullAxesValue, T_100));
+
+        state.Apply(VendorItemCountObs(Item, 1, T_200));
+        state.Apply(CurrencyBalanceObs(9_000L, 0, T_300));
+
+        // THEN — GC axes must both be null (probe returned null → fail-quiet)
+        var pd = state.ToSnapshot(T_900).PurchaseDetected;
+        Assert.NotNull(pd);
+        Assert.Null(pd!.ActiveGcCategory);
+        Assert.Null(pd.ActiveGcRankTier);
+    }
 }
