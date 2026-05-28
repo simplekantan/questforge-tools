@@ -447,6 +447,21 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                             stepId: combat.Id));
                     break;
 
+                case PurchaseItemStep purchase:
+                    if (purchase.ItemId == 0)
+                        errors.Add(E(ctx, "structural/purchase-item-id-zero", scope.ToString(),
+                            $"Step '{purchase.Id}': 'itemId' is 0; a valid item id is required.",
+                            stepId: purchase.Id));
+                    if (purchase.Quantity < 1)
+                        errors.Add(E(ctx, "structural/purchase-quantity-nonpositive", scope.ToString(),
+                            $"Step '{purchase.Id}': 'quantity' must be >= 1 (got {purchase.Quantity}).",
+                            stepId: purchase.Id));
+                    if (purchase.Target.NpcId == 0)
+                        errors.Add(E(ctx, "structural/purchase-npc-id-zero", scope.ToString(),
+                            $"Step '{purchase.Id}': vendor 'target.npcId' is 0; a valid NPC id is required.",
+                            stepId: purchase.Id));
+                    break;
+
                 case WaitStep wait:
                     if (wait.Seconds <= 0)
                         errors.Add(E(ctx, "structural/wait-seconds-nonpositive", scope.ToString(),

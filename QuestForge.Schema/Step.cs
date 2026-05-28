@@ -32,6 +32,7 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(AttunementStep),        "attune")]
 [JsonDerivedType(typeof(HandOverItemStep),      "hand-over-item")]
 [JsonDerivedType(typeof(WaitStep),              "wait")]
+[JsonDerivedType(typeof(PurchaseItemStep),      "purchase-item")]
 public class Step
 {
     public string Id { get; init; } = default!;
@@ -204,4 +205,21 @@ public class WaitStep : Step
 {
     /// <summary>Wall-clock seconds to wait before the step completes. Must be &gt; 0.</summary>
     public double Seconds { get; init; }
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<PurchaseCurrency>))]
+public enum PurchaseCurrency
+{
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("gil")]
+    Gil,
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("gcSeals")]
+    GcSeals
+}
+
+public class PurchaseItemStep : Step
+{
+    public NpcLocation Target { get; init; } = default!;
+    public uint ItemId { get; init; }
+    public int Quantity { get; init; } = 1;
+    public PurchaseCurrency Currency { get; init; } = PurchaseCurrency.Gil;
 }

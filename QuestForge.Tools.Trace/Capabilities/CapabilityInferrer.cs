@@ -35,6 +35,7 @@ public static class CapabilityInferrer
         [typeof(PickupItemStep)]          = "step:pickup-item",
         [typeof(AttunementStep)]          = "step:attune",
         [typeof(HandOverItemStep)]        = "step:hand-over-item",
+        [typeof(PurchaseItemStep)]        = "step:purchase-item",
     };
 
     /// <summary>

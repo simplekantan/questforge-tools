@@ -736,6 +736,64 @@ public sealed class CapabilityInferrerTests
     // B8 — CutsceneStep capability inference
     // =========================================================================
 
+    // =========================================================================
+    // Slice D — PurchaseItemStep capability inference
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithPurchaseItemStep_EmitsStepPurchaseItem()
+    {
+        /*
+         * RED: Will fail until Builder adds [typeof(PurchaseItemStep)] = "step:purchase-item"
+         *      to CapabilityInferrer.StepCapabilities.
+         *
+         * CONTRACT: Given a QuestDefinition with one PurchaseItemStep,
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result contains "step:purchase-item".
+         *
+         * BUILDER GUIDANCE: Add to StepCapabilities dictionary:
+         *   [typeof(PurchaseItemStep)] = "step:purchase-item",
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99100u,
+            Name              = "Purchase Item Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new PurchaseItemStep
+                        {
+                            Id       = "buy-bronze-cesti",
+                            Target   = new NpcLocation(1001234u, 128, new Position3(10.5f, 0f, -20.0f)),
+                            ItemId   = 1601u,
+                            Quantity = 1,
+                            Currency = PurchaseCurrency.Gil
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:purchase-item", caps);
+    }
+
     [Fact]
     public void Infer_QuestWithCutsceneStep_EmitsStepCutscene()
     {
