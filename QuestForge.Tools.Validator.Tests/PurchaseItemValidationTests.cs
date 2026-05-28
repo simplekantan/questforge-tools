@@ -429,6 +429,30 @@ public sealed class PurchaseItemValidationTests
         QuestBuilder.AssertNoError(errors, "structural/purchase-gc-fields-on-gil");
     }
 
+    [Fact]
+    public void GF10_BothAtMax_NoError()
+    {
+        // Boundary-positive: locks the inclusive upper end of both ranges so an off-by-one
+        // toward restrictive (e.g. validator using `> 2` instead of `> 3` for GcCategory)
+        // would be caught here rather than slipping through external review.
+        var step = new PurchaseItemStep
+        {
+            Id          = "buy-a",
+            Target      = ValidTarget,
+            ItemId      = 1601,
+            Quantity    = 1,
+            Currency    = PurchaseCurrency.GcSeals,
+            GcCategory  = 3,
+            GcRankTier  = 2
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)]));
+
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-category-out-of-range");
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-rank-tier-out-of-range");
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-fields-on-gil");
+    }
+
     // =========================================================================
     // Branch recursion: purchase rule fires for nested PurchaseItemStep
     // =========================================================================
