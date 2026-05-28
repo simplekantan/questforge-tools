@@ -222,6 +222,214 @@ public sealed class PurchaseItemValidationTests
     }
 
     // =========================================================================
+    // G-F — structural/purchase-gc-category-out-of-range,
+    //       structural/purchase-gc-rank-tier-out-of-range,
+    //       structural/purchase-gc-fields-on-gil
+    // =========================================================================
+
+    [Fact]
+    public void GF1_GcCategoryAboveMax_ReportsError()
+    {
+        // Given a purchase-item step with Currency=GcSeals and GcCategory=4 (above max of 3),
+        // When validated,
+        // Then exactly one structural/purchase-gc-category-out-of-range Error is produced.
+        var step = new PurchaseItemStep
+        {
+            Id         = "buy-a",
+            Target     = ValidTarget,
+            ItemId     = 1601,
+            Quantity   = 1,
+            Currency   = PurchaseCurrency.GcSeals,
+            GcCategory = 4
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)])).ToList();
+
+        QuestBuilder.AssertSingleError(errors, "structural/purchase-gc-category-out-of-range");
+        Assert.Equal(Severity.Error, errors[0].Severity);
+    }
+
+    [Fact]
+    public void GF2_GcCategoryNegative_ReportsError()
+    {
+        // Given a purchase-item step with Currency=GcSeals and GcCategory=-1,
+        // When validated,
+        // Then exactly one structural/purchase-gc-category-out-of-range Error is produced.
+        var step = new PurchaseItemStep
+        {
+            Id         = "buy-a",
+            Target     = ValidTarget,
+            ItemId     = 1601,
+            Quantity   = 1,
+            Currency   = PurchaseCurrency.GcSeals,
+            GcCategory = -1
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)])).ToList();
+
+        QuestBuilder.AssertSingleError(errors, "structural/purchase-gc-category-out-of-range");
+        Assert.Equal(Severity.Error, errors[0].Severity);
+    }
+
+    [Fact]
+    public void GF3_GcRankTierAboveMax_ReportsError()
+    {
+        // Given a purchase-item step with Currency=GcSeals and GcRankTier=3 (above max of 2),
+        // When validated,
+        // Then exactly one structural/purchase-gc-rank-tier-out-of-range Error is produced.
+        var step = new PurchaseItemStep
+        {
+            Id          = "buy-a",
+            Target      = ValidTarget,
+            ItemId      = 1601,
+            Quantity    = 1,
+            Currency    = PurchaseCurrency.GcSeals,
+            GcRankTier  = 3
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)])).ToList();
+
+        QuestBuilder.AssertSingleError(errors, "structural/purchase-gc-rank-tier-out-of-range");
+        Assert.Equal(Severity.Error, errors[0].Severity);
+    }
+
+    [Fact]
+    public void GF4_GcRankTierNegative_ReportsError()
+    {
+        // Given a purchase-item step with Currency=GcSeals and GcRankTier=-1,
+        // When validated,
+        // Then exactly one structural/purchase-gc-rank-tier-out-of-range Error is produced.
+        var step = new PurchaseItemStep
+        {
+            Id          = "buy-a",
+            Target      = ValidTarget,
+            ItemId      = 1601,
+            Quantity    = 1,
+            Currency    = PurchaseCurrency.GcSeals,
+            GcRankTier  = -1
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)])).ToList();
+
+        QuestBuilder.AssertSingleError(errors, "structural/purchase-gc-rank-tier-out-of-range");
+        Assert.Equal(Severity.Error, errors[0].Severity);
+    }
+
+    [Fact]
+    public void GF5_GcCategoryZero_Weapons_NoErrorNoWarning()
+    {
+        // Given a purchase-item step with Currency=GcSeals, GcCategory=0, GcRankTier=0 (both at minimum valid),
+        // When validated,
+        // Then none of the three GC-related error codes are emitted.
+        var step = new PurchaseItemStep
+        {
+            Id          = "buy-a",
+            Target      = ValidTarget,
+            ItemId      = 1601,
+            Quantity    = 1,
+            Currency    = PurchaseCurrency.GcSeals,
+            GcCategory  = 0,
+            GcRankTier  = 0
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)]));
+
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-category-out-of-range");
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-rank-tier-out-of-range");
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-fields-on-gil");
+    }
+
+    [Fact]
+    public void GF6_GilWithGcCategory_ReportsWarning()
+    {
+        // Given a purchase-item step with Currency=Gil and GcCategory=2,
+        // When validated,
+        // Then exactly one structural/purchase-gc-fields-on-gil Warning is produced.
+        var step = new PurchaseItemStep
+        {
+            Id         = "buy-a",
+            Target     = ValidTarget,
+            ItemId     = 1601,
+            Quantity   = 1,
+            Currency   = PurchaseCurrency.Gil,
+            GcCategory = 2
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)])).ToList();
+
+        QuestBuilder.AssertSingleError(errors, "structural/purchase-gc-fields-on-gil");
+        Assert.Equal(Severity.Warning, errors[0].Severity);
+    }
+
+    [Fact]
+    public void GF7_GilWithGcRankTier_ReportsWarning()
+    {
+        // Given a purchase-item step with Currency=Gil and GcRankTier=1,
+        // When validated,
+        // Then exactly one structural/purchase-gc-fields-on-gil Warning is produced.
+        var step = new PurchaseItemStep
+        {
+            Id         = "buy-a",
+            Target     = ValidTarget,
+            ItemId     = 1601,
+            Quantity   = 1,
+            Currency   = PurchaseCurrency.Gil,
+            GcRankTier = 1
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)])).ToList();
+
+        QuestBuilder.AssertSingleError(errors, "structural/purchase-gc-fields-on-gil");
+        Assert.Equal(Severity.Warning, errors[0].Severity);
+    }
+
+    [Fact]
+    public void GF8_GilBothNull_NoWarning()
+    {
+        // Given a purchase-item step with Currency=Gil, GcCategory=null, GcRankTier=null,
+        // When validated,
+        // Then no structural/purchase-gc-fields-on-gil warning is emitted.
+        var step = new PurchaseItemStep
+        {
+            Id         = "buy-a",
+            Target     = ValidTarget,
+            ItemId     = 1601,
+            Quantity   = 1,
+            Currency   = PurchaseCurrency.Gil,
+            GcCategory = null,
+            GcRankTier = null
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)]));
+
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-fields-on-gil");
+    }
+
+    [Fact]
+    public void GF9_GcSealsBothInRange_NoPurchaseGcErrors()
+    {
+        // Given a purchase-item step with Currency=GcSeals, GcCategory=2, GcRankTier=0 (both in-range),
+        // When validated,
+        // Then none of the three GC-related error codes are emitted.
+        var step = new PurchaseItemStep
+        {
+            Id          = "buy-a",
+            Target      = ValidTarget,
+            ItemId      = 1601,
+            Quantity    = 1,
+            Currency    = PurchaseCurrency.GcSeals,
+            GcCategory  = 2,
+            GcRankTier  = 0
+        };
+        var errors = QuestBuilder.Validate(QuestBuilder.Valid(
+            sequences: [QuestBuilder.Seq(0, step)]));
+
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-category-out-of-range");
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-rank-tier-out-of-range");
+        QuestBuilder.AssertNoError(errors, "structural/purchase-gc-fields-on-gil");
+    }
+
+    // =========================================================================
     // Branch recursion: purchase rule fires for nested PurchaseItemStep
     // =========================================================================
 
