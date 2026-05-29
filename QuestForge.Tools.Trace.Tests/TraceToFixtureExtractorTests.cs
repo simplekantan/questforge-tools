@@ -588,4 +588,94 @@ public sealed class TraceToFixtureExtractorTests
         // Assert
         Assert.Equal("simple-linear-acceptance.json", filename);
     }
+
+    // =========================================================================
+    // Catch-up: filename suggestions for newer step shapes (use-action, use-emote,
+    // teleport, purchase-item) — without these, new shapes silently fall through
+    // to "simple-linear-acceptance.json", a misleading default.
+    // =========================================================================
+
+    [Fact]
+    public void SuggestFilename_WithUseAction_ReturnsWithUseAction()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:talk", "step:travel", "step:use-action"],
+            QuestFile: "quests/arr/cls/65586-mrd-axe-in-the-stone.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-use-action.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_WithUseEmote_ReturnsWithUseEmote()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:talk", "step:travel", "step:use-emote"],
+            QuestFile: "quests/arr/sid/12345-cheer-the-recruit.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-use-emote.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_WithTeleport_ReturnsWithTeleport()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:talk", "step:teleport", "step:travel"],
+            QuestFile: "quests/arr/sid/22222-go-far.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-teleport.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_WithPurchaseItem_ReturnsWithPurchaseItem()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:purchase-item", "step:talk", "step:travel"],
+            QuestFile: "quests/arr/gc/33333-buy-cesti.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-purchase-item.json", extractor.SuggestFilename(fixture));
+    }
+
+    // Distinguishing-capability fallback: a fixture with multiple new shapes picks
+    // by priority. use-action > use-emote (combat actions are more distinguishing
+    // than emotes for fixture identity).
+    [Fact]
+    public void SuggestFilename_MultipleNewShapes_PicksByPriority()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:talk", "step:travel", "step:use-action", "step:use-emote"],
+            QuestFile: "quests/UNKNOWN.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        // No exact match → fallback by priority — use-action wins
+        Assert.Equal("with-use-action.json", extractor.SuggestFilename(fixture));
+    }
 }

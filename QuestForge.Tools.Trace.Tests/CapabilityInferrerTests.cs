@@ -888,4 +888,47 @@ public sealed class CapabilityInferrerTests
         Assert.Contains("step:cutscene", caps);
         Assert.Contains("predicate:questSequence", caps);
     }
+
+    // =========================================================================
+    // Catch-up: TeleportStep was missing from CapabilityInferrer's StepCapabilities
+    // dictionary even though TeleportStep shipped in #98. A quest using TeleportStep
+    // would silently get no `step:teleport` tag, breaking fixture-filename suggestion
+    // and downstream tooling that gates on capabilities.
+    // =========================================================================
+    [Fact]
+    public void Infer_QuestWithTeleportStep_EmitsStepTeleport()
+    {
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99200u,
+            Name              = "Teleport Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new TeleportStep
+                        {
+                            Id          = "teleport-to-limsa",
+                            AetheryteId = new AetheryteId(8),
+                            Expect      = new PredicateExpect { Predicate = "playerZone() == 129" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:teleport", caps);
+    }
 }
