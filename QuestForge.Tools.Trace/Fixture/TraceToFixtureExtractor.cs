@@ -30,6 +30,11 @@ public sealed class TraceToFixtureExtractor
         (["step:hand-over-item", "step:talk", "step:travel"], "with-hand-over-item.json"),
         (["step:interact-object", "step:travel"], "with-interact-object.json"),
         (["step:pickup-item", "step:travel"], "with-pickup-item.json"),
+        // Catch-up: newer step shapes (PR #100, #104, #95 et al.)
+        (["step:talk", "step:travel", "step:use-action"], "with-use-action.json"),
+        (["step:talk", "step:travel", "step:use-emote"], "with-use-emote.json"),
+        (["step:talk", "step:teleport", "step:travel"], "with-teleport.json"),
+        (["step:purchase-item", "step:talk", "step:travel"], "with-purchase-item.json"),
     ];
 
     // Priority-ordered list of distinguishing capabilities for the multi-shape fallback (§3.7).
@@ -47,6 +52,13 @@ public sealed class TraceToFixtureExtractor
         ("step:accept",         "with-accept.json"),
         ("step:interact-object","with-interact-object.json"),
         ("step:pickup-item",    "with-pickup-item.json"),
+        // Catch-up: newer step shapes. Action precedes emote (combat actions are more
+        // distinguishing for fixture identity than emotes). Teleport and purchase-item
+        // rank below since they're less "shape-defining" within a multi-shape quest.
+        ("step:use-action",     "with-use-action.json"),
+        ("step:use-emote",      "with-use-emote.json"),
+        ("step:teleport",       "with-teleport.json"),
+        ("step:purchase-item",  "with-purchase-item.json"),
     ];
 
     public TraceToFixtureExtractor(string? questDataRoot = null)
