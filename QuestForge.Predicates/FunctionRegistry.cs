@@ -23,7 +23,7 @@ public static class FunctionRegistry
         new("playerAverageItemLevel",    new Fixed(0),           [],              Int),
         new("playerNear",                new Fixed(2),           [Position, Int], Bool),
         new("playerStartingClass",       new Fixed(0),           [],              String),
-        new("currentJob",                new Fixed(0),           [],              String),
+        new("currentJob",                new Fixed(0),           [],              Int),
         new("playerJobId",               new Fixed(0),           [],              Int),
         new("isDiscipleOfWar",           new Fixed(0),           [],              Bool),
         new("isDiscipleOfMagic",         new Fixed(0),           [],              Bool),

@@ -110,12 +110,6 @@ public record Preconditions(int? MinGearCondition = null);
 
 public record RewardOverride(string Strategy, uint? ItemId = null);
 
-public record GearItem(string Slot, uint ItemId);
-// Slot: "mainhand" | "offhand" | "head" | "body" | "hands" | "legs" | "feet" |
-//       "earrings" | "necklace" | "bracelets" | "ringR" | "ringL" | "soul"
-
-public record GearConstraints(int? MinItemLevel = null);
-
 // UseItemTarget — DELETED (Decision UI1: replaced by flat TargetNpcId + TargetPosition on UseItemStep)
 // ActionTarget  — DELETED (schema-drift sync: UseActionStep now carries ActionType + TargetNpcId directly)
 
