@@ -117,30 +117,47 @@ public class CutsceneStep : Step
     public string Skip { get; init; } = "ifAllowed";   // "never" | "ifAllowed"
 }
 
-public class SayChatMessageStep : Step
+// SayChatMessageStep — synced with questforge/QuestForge.Schema/Step.cs
+// OLD shape: { Channel, Message, Target: NpcLocation? } — REPLACED
+public sealed class SayChatMessageStep : Step
 {
-    public string Channel { get; init; } = default!;  // "say" | "yell" | "shout"
     public string Message { get; init; } = default!;
-    public NpcLocation? Target { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? TargetNpcId { get; init; }
 }
 
-public class UseEmoteStep : Step
+// UseEmoteStep — synced with questforge/QuestForge.Schema/Step.cs
+// OLD shape: { EmoteId, Target: NpcLocation? } — REPLACED (added TargetNpcId, Motion)
+public sealed class UseEmoteStep : Step
 {
     public uint EmoteId { get; init; }
-    public NpcLocation? Target { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? TargetNpcId { get; init; }
+    public bool Motion { get; init; } = true;
 }
 
-public class UseItemStep : Step
+// UseItemStep — synced with questforge/QuestForge.Schema/Step.cs
+// OLD shape: { ItemId, Target: UseItemTarget? } — REPLACED (UseItemTarget DELETED)
+// TODO: ItemKind enum must be added to SharedValueTypes.cs
+public sealed class UseItemStep : Step
 {
+    public ItemKind Kind { get; init; }     // TODO: ItemKind enum
     public uint ItemId { get; init; }
-    public UseItemTarget? Target { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? TargetNpcId { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Position3? TargetPosition { get; init; }
 }
 
-public class UseActionStep : Step
+// UseActionStep — synced with questforge/QuestForge.Schema/Step.cs
+// OLD shape: { ActionId, Target: ActionTarget, RepeatUntilExpect } — REPLACED
+// TODO: ActionType enum must be added to SharedValueTypes.cs
+public sealed class UseActionStep : Step
 {
+    public ActionType ActionType { get; init; }     // TODO: ActionType enum
     public uint ActionId { get; init; }
-    public ActionTarget Target { get; init; } = default!;
-    public bool RepeatUntilExpect { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? TargetNpcId { get; init; }
 }
 
 public class EquipGearForQuestStep : Step

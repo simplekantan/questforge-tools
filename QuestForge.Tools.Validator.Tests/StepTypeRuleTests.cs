@@ -1,4 +1,4 @@
-using QuestForge.Schema;
+﻿using QuestForge.Schema;
 using QuestForge.Tools.Validator;
 
 namespace QuestForge.Tools.Validator.Tests;
@@ -36,7 +36,7 @@ public class StepTypeRuleTests
     [Fact]
     public void TalkStep_NeitherTargetNorTargets_IsValid()
     {
-        // Both Target and Targets are nullable — no "must have one" rule exists.
+        // Both Target and Targets are nullable â€” no "must have one" rule exists.
         // The engine advances dialogue without moving when neither is set.
         var step = new TalkStep { Id = "talk-a", Target = null, Targets = null, Expect = null };
         QuestBuilder.AssertNoErrors(QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
@@ -142,7 +142,7 @@ public class StepTypeRuleTests
     [Fact]
     public void DutyStep_SpdWithDutyId_ReportsInvalidField()
     {
-        // Per plan GWT: kind "spd" + DutyId = 56 → duty-invalid-field-for-kind
+        // Per plan GWT: kind "spd" + DutyId = 56 â†’ duty-invalid-field-for-kind
         var step = new DutyStep
         {
             Id      = "duty-a",
@@ -157,93 +157,116 @@ public class StepTypeRuleTests
     }
 
     // =========================================================================
-    // structural/use-item-target-mismatch
+    // UseItemStep rules â€” new flat schema shape (Decision UI11 / USE_ITEM_STEP_PLAN.md)
+    // Replaces the six old UseItemStep_* tests that referenced the deleted UseItemTarget shape.
+    //
+    //   - ItemKind enum in SharedValueTypes.cs
+    //   - UseItemStep { Kind: ItemKind, ItemId: uint, TargetNpcId: uint?, TargetPosition: Position3? }
+    // Until then the tests produce compile errors â€” intended RED state.
     // =========================================================================
 
-    [Fact]
-    public void UseItemStep_NoTarget_IsValid()
-    {
-        var step = new UseItemStep { Id = "use-a", ItemId = 12345, Target = null, Expect = null };
-        QuestBuilder.AssertNoErrors(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
-    }
+    // structural/use-item-itemid-zero â€” mirrors engine-side E13
 
-    [Theory]
-    [InlineData("npc")]
-    [InlineData("object")]
-    [InlineData("position")]
-    public void UseItemStep_TargetKindWithRequiredFields_IsValid(string kind)
+    [Fact]
+    public void UseItemStep_SelfCast_IsValid()
     {
-        var target = kind switch
+        // Both target fields null + non-zero ItemId â†’ valid (self-cast pattern)
+        var step = new UseItemStep
         {
-            "npc"      => new UseItemTarget { Kind = "npc",      NpcId = 1000789 },
-            "object"   => new UseItemTarget { Kind = "object",   InteractableId = 2001234 },
-            "position" => new UseItemTarget { Kind = "position", Position = new Position3(0f, 0f, 0f), Tolerance = 3.0f },
-            _          => throw new InvalidOperationException()
+            Id          = "use-a",
+            Kind        = ItemKind.InventoryItem,
+            ItemId      = 12345u,
+            TargetNpcId = null,
+            TargetPosition = null,
+            Expect      = null
         };
-        var step = new UseItemStep { Id = "use-a", ItemId = 12345, Target = target, Expect = null };
         QuestBuilder.AssertNoErrors(
             QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
     }
 
     [Fact]
-    public void UseItemStep_NpcTargetMissingNpcId_ReportsError()
+    public void UseItemStep_NpcTarget_IsValid()
     {
         var step = new UseItemStep
         {
-            Id     = "use-a",
-            ItemId = 12345,
-            Target = new UseItemTarget { Kind = "npc", NpcId = null },
-            Expect = null
+            Id          = "use-b",
+            Kind        = ItemKind.KeyItem,
+            ItemId      = 2000456u,
+            TargetNpcId = 1000789u,
+            TargetPosition = null,
+            Expect      = null
         };
-        QuestBuilder.AssertSingleError(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/use-item-target-mismatch");
+        QuestBuilder.AssertNoErrors(
+            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
     }
 
     [Fact]
-    public void UseItemStep_ObjectTargetMissingInteractableId_ReportsError()
+    public void UseItemStep_PositionTarget_IsValid()
     {
         var step = new UseItemStep
         {
-            Id     = "use-a",
-            ItemId = 12345,
-            Target = new UseItemTarget { Kind = "object", InteractableId = null },
-            Expect = null
+            Id             = "use-c",
+            Kind           = ItemKind.KeyItem,
+            ItemId         = 2000123u,
+            TargetNpcId    = null,
+            TargetPosition = new Position3(1f, 0f, 2f),
+            Expect         = null
         };
-        QuestBuilder.AssertSingleError(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/use-item-target-mismatch");
+        QuestBuilder.AssertNoErrors(
+            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
     }
 
     [Fact]
-    public void UseItemStep_PositionTargetMissingPosition_ReportsError()
+    public void UseItemStep_ItemIdZero_ReportsError()
     {
         var step = new UseItemStep
         {
-            Id     = "use-a",
-            ItemId = 12345,
-            Target = new UseItemTarget { Kind = "position", Position = null, Tolerance = 3.0f },
-            Expect = null
+            Id          = "use-a",
+            Kind        = ItemKind.KeyItem,
+            ItemId      = 0u,               // zero is never valid
+            TargetNpcId = null,
+            TargetPosition = null,
+            Expect      = null
         };
         QuestBuilder.AssertSingleError(
             QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/use-item-target-mismatch");
+            "structural/use-item-itemid-zero");
     }
 
     [Fact]
-    public void UseItemStep_PositionTargetMissingTolerance_ReportsError()
+    public void UseItemStep_NpcTargetZero_ReportsError()
     {
+        // Explicit zero is invalid for TargetNpcId; null means "no NPC target"
         var step = new UseItemStep
         {
-            Id     = "use-a",
-            ItemId = 12345,
-            Target = new UseItemTarget { Kind = "position", Position = new Position3(0f, 0f, 0f), Tolerance = null },
-            Expect = null
+            Id          = "use-a",
+            Kind        = ItemKind.KeyItem,
+            ItemId      = 12345u,
+            TargetNpcId = 0u,               // explicit zero is always invalid
+            TargetPosition = null,
+            Expect      = null
         };
         QuestBuilder.AssertSingleError(
             QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/use-item-target-mismatch");
+            "structural/use-item-target-npc-id-zero");
+    }
+
+    [Fact]
+    public void UseItemStep_BothTargetsSet_ReportsError()
+    {
+        // TargetNpcId and TargetPosition are mutually exclusive (Decision UI4 / E15 / UI11)
+        var step = new UseItemStep
+        {
+            Id             = "use-a",
+            Kind           = ItemKind.KeyItem,
+            ItemId         = 2000456u,
+            TargetNpcId    = 1000789u,          // both set â€” ambiguous target
+            TargetPosition = new Position3(1f, 2f, 3f),
+            Expect         = null
+        };
+        QuestBuilder.AssertSingleError(
+            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
+            "structural/use-item-ambiguous-target");
     }
 
     // =========================================================================
@@ -434,7 +457,7 @@ public class StepTypeRuleTests
     [Fact]
     public void Chain_EmptyNext_IsValid()
     {
-        // Empty next = terminus — no default required
+        // Empty next = terminus â€” no default required
         var quest = QuestBuilder.Valid() with
         {
             Chain = new Chain { Next = [] }
