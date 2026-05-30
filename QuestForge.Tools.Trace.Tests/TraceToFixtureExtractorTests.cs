@@ -628,6 +628,22 @@ public sealed class TraceToFixtureExtractorTests
     }
 
     [Fact]
+    public void SuggestFilename_WithUseItem_ReturnsWithUseItem()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:talk", "step:travel", "step:use-item"],
+            QuestFile: "quests/arr/sid/44444-use-the-thing.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-use-item.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
     public void SuggestFilename_WithSayChatMessage_ReturnsWithSayChatMessage()
     {
         var extractor = new TraceToFixtureExtractor();
