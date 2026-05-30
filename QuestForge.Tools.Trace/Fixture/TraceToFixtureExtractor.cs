@@ -33,6 +33,7 @@ public sealed class TraceToFixtureExtractor
         // Catch-up: newer step shapes (PR #100, #104, #95 et al.)
         (["step:talk", "step:travel", "step:use-action"], "with-use-action.json"),
         (["step:talk", "step:travel", "step:use-emote"], "with-use-emote.json"),
+        (["step:say-chat-message", "step:talk", "step:travel"], "with-say-chat-message.json"),
         (["step:talk", "step:teleport", "step:travel"], "with-teleport.json"),
         (["step:purchase-item", "step:talk", "step:travel"], "with-purchase-item.json"),
     ];
@@ -57,6 +58,7 @@ public sealed class TraceToFixtureExtractor
         // rank below since they're less "shape-defining" within a multi-shape quest.
         ("step:use-action",     "with-use-action.json"),
         ("step:use-emote",      "with-use-emote.json"),
+        ("step:say-chat-message", "with-say-chat-message.json"),
         ("step:teleport",       "with-teleport.json"),
         ("step:purchase-item",  "with-purchase-item.json"),
     ];
