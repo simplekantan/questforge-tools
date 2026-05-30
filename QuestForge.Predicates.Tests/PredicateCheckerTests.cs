@@ -167,8 +167,8 @@ public class PredicateCheckerTests
         => AssertSingleSemanticError("currentJob() > \"Gladiator\"", "type-mismatch");
 
     [Fact]
-    public void Comparison_StringEq_NoError()
-        => AssertNoSemanticErrors("currentJob() != \"Pugilist\"");
+    public void Comparison_IntEq_currentJob_NoError()
+        => AssertNoSemanticErrors("currentJob() != 19");
 
     [Fact]
     public void Comparison_IntEq_NoError()
