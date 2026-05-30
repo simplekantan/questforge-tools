@@ -628,6 +628,22 @@ public sealed class TraceToFixtureExtractorTests
     }
 
     [Fact]
+    public void SuggestFilename_WithSayChatMessage_ReturnsWithSayChatMessage()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:say-chat-message", "step:talk", "step:travel"],
+            QuestFile: "quests/arr/sid/55555-open-sesame.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-say-chat-message.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
     public void SuggestFilename_WithTeleport_ReturnsWithTeleport()
     {
         var extractor = new TraceToFixtureExtractor();

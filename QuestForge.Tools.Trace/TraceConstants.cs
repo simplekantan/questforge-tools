@@ -18,8 +18,9 @@ internal static class TraceConstants
     internal const string ActionTeleport     = "teleport";
     internal const string ActionPurchase     = "purchase";
     internal const string ActionUseAction    = "useaction";
-    internal const string ActionUseEmote     = "useemote";
-    internal const string ActionEngage       = "engage";
+    internal const string ActionUseEmote         = "useemote";
+    internal const string ActionSayChatMessage   = "saychatmessage";  // lowercased from "SayChatMessage"
+    internal const string ActionEngage           = "engage";
 
     internal static bool IsTerminalAction(string actionTypeLower) =>
         actionTypeLower is ActionDone or ActionAwaitUser;
