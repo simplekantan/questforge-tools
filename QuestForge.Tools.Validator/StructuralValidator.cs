@@ -533,30 +533,36 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
         }
     }
 
+    // ValidateUseItemStep — rewritten for new flat schema shape (Decision UI11 / USE_ITEM_STEP_PLAN.md)
+    // Old shape: step.Target (UseItemTarget? with Kind discriminator) — DELETED
+    // New shape: step.ItemId, step.TargetNpcId (uint?), step.TargetPosition (Position3?)
+    //
+    // TODO: This method will compile once the new UseItemStep shape is in QuestForge.Schema.
+    //       Until then it produces compile errors referencing the deleted UseItemTarget — that
+    //       is the intended RED state (Builder task: apply schema rewrite so this compiles).
     private static void ValidateUseItemStep(
         UseItemStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
     {
-        if (step.Target is null) return;
+        // structural/use-item-itemid-zero — mirrors engine-side E13
+        if (step.ItemId == 0)
+            errors.Add(E(ctx, "structural/use-item-itemid-zero", scope.ToString(),
+                $"Step '{step.Id}': 'itemId' is 0; a valid item id is required.",
+                stepId: step.Id));
 
-        switch (step.Target.Kind)
-        {
-            case "npc" when step.Target.NpcId is null:
-                errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
-                    $"Step '{step.Id}': use-item target kind 'npc' requires 'npcId'.", stepId: step.Id));
-                break;
-            case "object" when step.Target.InteractableId is null:
-                errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
-                    $"Step '{step.Id}': use-item target kind 'object' requires 'interactableId'.", stepId: step.Id));
-                break;
-            case "position":
-                if (step.Target.Position is null)
-                    errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
-                        $"Step '{step.Id}': use-item target kind 'position' requires 'position'.", stepId: step.Id));
-                if (step.Target.Tolerance is null)
-                    errors.Add(E(ctx, "structural/use-item-target-mismatch", scope.ToString(),
-                        $"Step '{step.Id}': use-item target kind 'position' requires 'tolerance'.", stepId: step.Id));
-                break;
-        }
+        // structural/use-item-target-npc-id-zero — mirrors engine-side E14
+        // null is allowed (means self-cast); explicit zero is always invalid
+        if (step.TargetNpcId == 0)
+            errors.Add(E(ctx, "structural/use-item-target-npc-id-zero", scope.ToString(),
+                $"Step '{step.Id}': 'targetNpcId' is 0; use null to indicate no NPC target, not 0.",
+                stepId: step.Id));
+
+        // structural/use-item-ambiguous-target — mirrors engine-side E15
+        // At most one of TargetNpcId / TargetPosition may be set (Decision UI4)
+        if (step.TargetNpcId.HasValue && step.TargetPosition is not null)
+            errors.Add(E(ctx, "structural/use-item-ambiguous-target", scope.ToString(),
+                $"Step '{step.Id}': both 'targetNpcId' and 'targetPosition' are set; they are mutually exclusive. " +
+                "Use 'targetNpcId' for NPC targets or 'targetPosition' for AoE ground targets, not both.",
+                stepId: step.Id));
     }
 
     private static void ValidatePrereqStates(
