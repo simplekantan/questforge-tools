@@ -27,6 +27,7 @@ public static class FunctionRegistry
         new("playerJobId",               new Fixed(0),           [],              Int),
         new("isDiscipleOfWar",           new Fixed(0),           [],              Bool),
         new("isDiscipleOfMagic",         new Fixed(0),           [],              Bool),
+        new("isPlayerJob",               new Fixed(1),           [Int],           Bool),
         new("inventoryFreeSlots",        new Fixed(0),           [],              Int),
         new("instanceKind",              new Fixed(0),           [],              String),
         new("playerInCombat",            new Fixed(0),           [],              Bool),
