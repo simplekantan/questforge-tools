@@ -25,6 +25,7 @@ internal static class TraceConstants
     internal const string ActionEquipGear        = "equipgear";      // lowercased from "EquipGear"
     internal const string ActionEquipBestGear    = "equipbestgear";  // lowercased from "EquipBestGear"
     internal const string ActionChangeJob        = "changejob";      // lowercased from "ChangeJob"
+    internal const string ActionRegisterGearset  = "registergearset"; // lowercased from "RegisterGearset"
 
     internal static bool IsTerminalAction(string actionTypeLower) =>
         actionTypeLower is ActionDone or ActionAwaitUser;

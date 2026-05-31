@@ -40,6 +40,7 @@ public sealed class TraceToFixtureExtractor
         (["step:equip-gear-for-quest", "step:talk", "step:travel"], "with-equip-gear-for-quest.json"),
         (["step:talk", "step:teleport", "step:travel"], "with-teleport.json"),
         (["step:purchase-item", "step:talk", "step:travel"], "with-purchase-item.json"),
+        (["step:register-gearset", "step:talk", "step:travel"], "with-register-gearset.json"),
     ];
 
     // Priority-ordered list of distinguishing capabilities for the multi-shape fallback (§3.7).
@@ -67,6 +68,7 @@ public sealed class TraceToFixtureExtractor
         ("step:equip-gear-for-quest", "with-equip-gear-for-quest.json"),
         ("step:equip-best-gear",      "with-equip-best-gear.json"),
         ("step:change-job",           "with-change-job.json"),
+        ("step:register-gearset",     "with-register-gearset.json"),
         ("step:teleport",       "with-teleport.json"),
         ("step:purchase-item",  "with-purchase-item.json"),
     ];
