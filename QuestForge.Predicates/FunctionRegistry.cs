@@ -43,6 +43,7 @@ public static class FunctionRegistry
         new("questVariable",             new Fixed(2),           [Int, Int],      Int),
         new("questVariableLow",          new Fixed(2),           [Int, Int],      Int),
         new("questVariableHigh",         new Fixed(2),           [Int, Int],      Int),
+        new("inventoryHasCoffers",       new Fixed(0),           [],              Bool),
     ];
 
     public static IReadOnlyDictionary<string, FunctionSignature> All { get; } =

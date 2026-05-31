@@ -39,6 +39,7 @@ public static class CapabilityInferrer
         [typeof(WaitStep)]                = "step:wait",
         [typeof(TeleportStep)]            = "step:teleport",
         [typeof(RegisterGearsetStep)]     = "step:register-gearset",
+        [typeof(OpenCoffersStep)]         = "step:open-coffers",
     };
 
     /// <summary>
