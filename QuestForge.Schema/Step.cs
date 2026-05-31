@@ -34,6 +34,7 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(WaitStep),              "wait")]
 [JsonDerivedType(typeof(PurchaseItemStep),      "purchase-item")]
 [JsonDerivedType(typeof(RegisterGearsetStep),   "register-gearset")]
+[JsonDerivedType(typeof(OpenCoffersStep),       "open-coffers")]
 public class Step
 {
     public string Id { get; init; } = default!;
@@ -253,3 +254,5 @@ public class PurchaseItemStep : Step
 }
 
 public sealed class RegisterGearsetStep : Step { }
+
+public sealed class OpenCoffersStep : Step { }

@@ -10,14 +10,15 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains36Functions()
+    public void All_Contains37Functions()
     {
         /*
-         * CONTRACT (RG-N3 / RG-J0 / CJP5 / RGP5): FunctionRegistry.All.Count == 36 after the two nibble
+         * CONTRACT (RG-N3 / RG-J0 / CJP5 / RGP5 / OC-10): FunctionRegistry.All.Count == 37 after the two nibble
          *   entries (questVariableLow, questVariableHigh), the three job entries
-         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), isPlayerJob, and jobGearsetExists land.
+         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), isPlayerJob, jobGearsetExists,
+         *   and inventoryHasCoffers land.
          */
-        Assert.Equal(36, FunctionRegistry.All.Count);
+        Assert.Equal(37, FunctionRegistry.All.Count);
     }
 
     [Fact]
@@ -321,6 +322,31 @@ public class FunctionRegistryTests
         Assert.Equal(1, fixed1.Count);
         Assert.Single(sig.ParameterTypes);
         Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Bool, sig.ReturnType);
+    }
+
+    // =========================================================================
+    // inventoryHasCoffers registry test (OC-10 from OPEN_COFFERS_STEP_PLAN.md)
+    // =========================================================================
+
+    [Fact]
+    public void InventoryHasCoffers_Signature_IsCorrect()
+    {
+        /*
+         * CONTRACT (OC-10): Given FunctionRegistry.TryGet("inventoryHasCoffers", out var sig),
+         *                   Then found == true,
+         *                        sig.Name == "inventoryHasCoffers",
+         *                        sig.Arity is Fixed(0),
+         *                        sig.ParameterTypes is empty,
+         *                        sig.ReturnType == Bool.
+         */
+        var found = FunctionRegistry.TryGet("inventoryHasCoffers", out var sig);
+
+        Assert.True(found, "inventoryHasCoffers should be registered in FunctionRegistry");
+        Assert.Equal("inventoryHasCoffers", sig.Name);
+        var fixed0 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(0, fixed0.Count);
+        Assert.Empty(sig.ParameterTypes);
         Assert.Equal(PredicateType.Bool, sig.ReturnType);
     }
 }
