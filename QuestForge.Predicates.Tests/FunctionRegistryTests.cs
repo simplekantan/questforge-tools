@@ -10,14 +10,14 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains34Functions()
+    public void All_Contains35Functions()
     {
         /*
-         * CONTRACT (RG-N3 / RG-J0): FunctionRegistry.All.Count == 34 after the two nibble
-         *   entries (questVariableLow, questVariableHigh) and the three job entries
-         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic) land.
+         * CONTRACT (RG-N3 / RG-J0 / CJP5): FunctionRegistry.All.Count == 35 after the two nibble
+         *   entries (questVariableLow, questVariableHigh), the three job entries
+         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), and isPlayerJob land.
          */
-        Assert.Equal(34, FunctionRegistry.All.Count);
+        Assert.Equal(35, FunctionRegistry.All.Count);
     }
 
     [Fact]
