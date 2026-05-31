@@ -38,6 +38,7 @@ public static class CapabilityInferrer
         [typeof(PurchaseItemStep)]        = "step:purchase-item",
         [typeof(WaitStep)]                = "step:wait",
         [typeof(TeleportStep)]            = "step:teleport",
+        [typeof(RegisterGearsetStep)]     = "step:register-gearset",
     };
 
     /// <summary>

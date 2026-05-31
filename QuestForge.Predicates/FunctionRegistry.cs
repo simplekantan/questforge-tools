@@ -37,6 +37,7 @@ public static class FunctionRegistry
         new("gil",                       new Fixed(0),           [],              Int),
         new("playerLowestGearCondition", new Fixed(0),           [],              Int),
         new("gearsetExists",             new Fixed(1),           [String],        Bool),
+        new("jobGearsetExists",          new Fixed(1),           [Int],           Bool),
         new("inNewGamePlus",             new Fixed(0),           [],              Bool),
         new("isAttuned",                 new Fixed(1),           [Int],           Bool),
         new("questVariable",             new Fixed(2),           [Int, Int],      Int),

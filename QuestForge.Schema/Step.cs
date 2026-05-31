@@ -33,6 +33,7 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(HandOverItemStep),      "hand-over-item")]
 [JsonDerivedType(typeof(WaitStep),              "wait")]
 [JsonDerivedType(typeof(PurchaseItemStep),      "purchase-item")]
+[JsonDerivedType(typeof(RegisterGearsetStep),   "register-gearset")]
 public class Step
 {
     public string Id { get; init; } = default!;
@@ -250,3 +251,5 @@ public class PurchaseItemStep : Step
     /// <summary>GC rank tier row within the selected category (0=lowest, 2=highest); valid range 0..2.</summary>
     public int? GcRankTier { get; init; }
 }
+
+public sealed class RegisterGearsetStep : Step { }

@@ -10,14 +10,14 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains35Functions()
+    public void All_Contains36Functions()
     {
         /*
-         * CONTRACT (RG-N3 / RG-J0 / CJP5): FunctionRegistry.All.Count == 35 after the two nibble
+         * CONTRACT (RG-N3 / RG-J0 / CJP5 / RGP5): FunctionRegistry.All.Count == 36 after the two nibble
          *   entries (questVariableLow, questVariableHigh), the three job entries
-         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), and isPlayerJob land.
+         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), isPlayerJob, and jobGearsetExists land.
          */
-        Assert.Equal(35, FunctionRegistry.All.Count);
+        Assert.Equal(36, FunctionRegistry.All.Count);
     }
 
     [Fact]
@@ -308,5 +308,19 @@ public class FunctionRegistryTests
     {
         var suggestions = FunctionRegistry.SuggestSimilar("questSequence");
         Assert.Contains("questSequence", suggestions);
+    }
+
+    [Fact]
+    public void JobGearsetExists_Signature_IsCorrect_RGP5()
+    {
+        var found = FunctionRegistry.TryGet("jobGearsetExists", out var sig);
+
+        Assert.True(found, "jobGearsetExists should be registered in FunctionRegistry");
+        Assert.Equal("jobGearsetExists", sig.Name);
+        var fixed1 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(1, fixed1.Count);
+        Assert.Single(sig.ParameterTypes);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Bool, sig.ReturnType);
     }
 }
