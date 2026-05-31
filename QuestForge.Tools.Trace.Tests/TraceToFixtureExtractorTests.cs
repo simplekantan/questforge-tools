@@ -710,4 +710,72 @@ public sealed class TraceToFixtureExtractorTests
         // No exact match → fallback by priority — use-action wins
         Assert.Equal("with-use-action.json", extractor.SuggestFilename(fixture));
     }
+
+    [Fact]
+    public void SuggestFilename_WithEquipGearForQuest_ReturnsWithEquipGearForQuest()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:equip-gear-for-quest", "step:talk", "step:travel"],
+            QuestFile: "quests/arr/cls/65600-equip-the-ring.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-equip-gear-for-quest.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_WithEquipBestGear_ReturnsWithEquipBestGear()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:equip-best-gear", "step:talk", "step:travel"],
+            QuestFile: "quests/arr/cls/65601-gear-up.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-equip-best-gear.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_WithChangeJob_ReturnsWithChangeJob()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:change-job", "step:talk", "step:travel"],
+            QuestFile: "quests/arr/cls/65602-switch-class.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-change-job.json", extractor.SuggestFilename(fixture));
+    }
+
+    // Distinguishing-capability fallback: a fixture with multiple gear shapes picks
+    // by priority. equip-gear-for-quest > equip-best-gear > change-job (more-specific
+    // gear steps are more distinguishing for fixture identity).
+    [Fact]
+    public void SuggestFilename_MultipleGearShapes_PicksByPriority()
+    {
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:change-job", "step:equip-gear-for-quest", "step:talk", "step:travel"],
+            QuestFile: "quests/UNKNOWN.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        // No exact match → fallback by priority — equip-gear-for-quest wins
+        Assert.Equal("with-equip-gear-for-quest.json", extractor.SuggestFilename(fixture));
+    }
 }
