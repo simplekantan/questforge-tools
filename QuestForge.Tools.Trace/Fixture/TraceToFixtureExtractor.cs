@@ -35,6 +35,9 @@ public sealed class TraceToFixtureExtractor
         (["step:talk", "step:travel", "step:use-emote"], "with-use-emote.json"),
         (["step:talk", "step:travel", "step:use-item"], "with-use-item.json"),
         (["step:say-chat-message", "step:talk", "step:travel"], "with-say-chat-message.json"),
+        (["step:change-job", "step:talk", "step:travel"], "with-change-job.json"),
+        (["step:equip-best-gear", "step:talk", "step:travel"], "with-equip-best-gear.json"),
+        (["step:equip-gear-for-quest", "step:talk", "step:travel"], "with-equip-gear-for-quest.json"),
         (["step:talk", "step:teleport", "step:travel"], "with-teleport.json"),
         (["step:purchase-item", "step:talk", "step:travel"], "with-purchase-item.json"),
     ];
@@ -61,6 +64,9 @@ public sealed class TraceToFixtureExtractor
         ("step:use-emote",      "with-use-emote.json"),
         ("step:use-item",       "with-use-item.json"),
         ("step:say-chat-message", "with-say-chat-message.json"),
+        ("step:equip-gear-for-quest", "with-equip-gear-for-quest.json"),
+        ("step:equip-best-gear",      "with-equip-best-gear.json"),
+        ("step:change-job",           "with-change-job.json"),
         ("step:teleport",       "with-teleport.json"),
         ("step:purchase-item",  "with-purchase-item.json"),
     ];
