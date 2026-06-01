@@ -513,23 +513,11 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
     private static void ValidateDutyStep(
         DutyStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
     {
-        if (step.Kind == "regular")
+        if (step.Kind == "duty")
         {
-            if (step.DutyId is null)
+            if (step.ContentFinderConditionId is null)
                 errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
-                    $"Step '{step.Id}': duty kind 'regular' requires 'dutyId'.", stepId: step.Id));
-            if (step.EntryNpc is null)
-                errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
-                    $"Step '{step.Id}': duty kind 'regular' requires 'entryNpc'.", stepId: step.Id));
-        }
-        else if (step.Kind == "spd")
-        {
-            if (step.Trigger is null)
-                errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
-                    $"Step '{step.Id}': duty kind 'spd' requires 'trigger'.", stepId: step.Id));
-            if (step.DutyId is not null)
-                errors.Add(E(ctx, "structural/duty-invalid-field-for-kind", scope.ToString(),
-                    $"Step '{step.Id}': 'dutyId' must not be set for duty kind 'spd'.", stepId: step.Id));
+                    $"Step '{step.Id}': duty kind 'duty' requires 'contentFinderConditionId'.", stepId: step.Id));
         }
     }
 

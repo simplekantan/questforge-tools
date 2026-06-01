@@ -58,103 +58,47 @@ public class StepTypeRuleTests
     }
 
     // =========================================================================
-    // structural/duty-missing-required-field and structural/duty-invalid-field-for-kind
+    // structural/duty-missing-required-field (kind: "duty")
     // =========================================================================
 
-    private static DutyStep ValidRegularDuty() => new()
+    private static DutyStep ValidDutyKindDuty() => new()
     {
-        Id       = "duty-a",
-        Kind     = "regular",
-        DutyId   = 56,
-        EntryNpc = new NpcLocation(1014883, 419, new Position3(0f, 0f, 0f)),
-        Expect   = null
-    };
-
-    private static DutyStep ValidSpdDuty() => new()
-    {
-        Id      = "duty-a",
-        Kind    = "spd",
-        Trigger = new DutyTrigger("npc", 128, new Position3(0f, 0f, 0f), NpcId: 1000789),
-        Expect  = null
+        Id                       = "duty-a",
+        Kind                     = "duty",
+        ContentFinderConditionId = 2,
+        Expect                   = null
     };
 
     [Fact]
-    public void DutyStep_ValidRegular_IsValid()
+    public void DutyStep_ValidDutyKind_IsValid()
     {
         QuestBuilder.AssertNoErrors(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, ValidRegularDuty())])));
+            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, ValidDutyKindDuty())])));
     }
 
     [Fact]
     public void DutyStep_ValidSpd_IsValid()
     {
+        var step = new DutyStep { Id = "duty-a", Kind = "spd", Expect = null };
         QuestBuilder.AssertNoErrors(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, ValidSpdDuty())])));
+            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])));
     }
 
     [Fact]
-    public void DutyStep_RegularMissingDutyId_ReportsError()
+    public void DutyStep_DutyKindMissingCfcId_ReportsError()
     {
         var step = new DutyStep
         {
-            Id       = "duty-a",
-            Kind     = "regular",
-            DutyId   = null,  // missing
-            EntryNpc = new NpcLocation(1014883, 419, new Position3(0f, 0f, 0f)),
-            Expect   = null
+            Id   = "duty-a",
+            Kind = "duty",
+            ContentFinderConditionId = null,
+            Expect = null
         };
         QuestBuilder.AssertSingleError(
             QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
             "structural/duty-missing-required-field");
     }
 
-    [Fact]
-    public void DutyStep_RegularMissingEntryNpc_ReportsError()
-    {
-        var step = new DutyStep
-        {
-            Id       = "duty-a",
-            Kind     = "regular",
-            DutyId   = 56,
-            EntryNpc = null,  // missing
-            Expect   = null
-        };
-        QuestBuilder.AssertSingleError(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/duty-missing-required-field");
-    }
-
-    [Fact]
-    public void DutyStep_SpdMissingTrigger_ReportsError()
-    {
-        var step = new DutyStep
-        {
-            Id      = "duty-a",
-            Kind    = "spd",
-            Trigger = null,  // missing
-            Expect  = null
-        };
-        QuestBuilder.AssertSingleError(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/duty-missing-required-field");
-    }
-
-    [Fact]
-    public void DutyStep_SpdWithDutyId_ReportsInvalidField()
-    {
-        // Per plan GWT: kind "spd" + DutyId = 56 â†’ duty-invalid-field-for-kind
-        var step = new DutyStep
-        {
-            Id      = "duty-a",
-            Kind    = "spd",
-            DutyId  = 56,   // invalid for spd
-            Trigger = new DutyTrigger("npc", 128, new Position3(0f, 0f, 0f), NpcId: 1000789),
-            Expect  = null
-        };
-        QuestBuilder.AssertSingleError(
-            QuestBuilder.Validate(QuestBuilder.Valid(sequences: [QuestBuilder.Seq(0, step)])),
-            "structural/duty-invalid-field-for-kind");
-    }
 
     // =========================================================================
     // UseItemStep rules â€” new flat schema shape (Decision UI11 / USE_ITEM_STEP_PLAN.md)

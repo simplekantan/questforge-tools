@@ -61,8 +61,14 @@ public static class CapabilityInferrer
                     caps.Add(cap);
 
                 // DutyStep with kind=="spd" also emits step:spd
-                if (step is DutyStep duty && duty.Kind == "spd")
-                    caps.Add("step:spd");
+                // DutyStep with kind=="duty" also emits step:dungeon-trial
+                if (step is DutyStep duty)
+                {
+                    if (duty.Kind == "spd")
+                        caps.Add("step:spd");
+                    else if (duty.Kind == "duty")
+                        caps.Add("step:dungeon-trial");
+                }
 
                 // Track engine-level features
                 if (step is BranchStep branch)

@@ -29,6 +29,7 @@ internal static class TraceConstants
     internal const string ActionOpenCoffer       = "opencoffer";      // lowercased from "OpenCoffer"
     internal const string ActionInteractObject          = "interactobject";          // lowercased from "InteractObject"
     internal const string ActionEnterSinglePlayerDuty  = "entersingleplayerduty";   // lowercased from "EnterSinglePlayerDuty"
+    internal const string ActionEnterDuty              = "enterduty";                // lowercased from "EnterDuty"
 
     internal static bool IsTerminalAction(string actionTypeLower) =>
         actionTypeLower is ActionDone or ActionAwaitUser;
