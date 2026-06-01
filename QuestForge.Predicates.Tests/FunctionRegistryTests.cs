@@ -10,15 +10,16 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains37Functions()
+    public void All_Contains39Functions()
     {
         /*
-         * CONTRACT (RG-N3 / RG-J0 / CJP5 / RGP5 / OC-10): FunctionRegistry.All.Count == 37 after the two nibble
-         *   entries (questVariableLow, questVariableHigh), the three job entries
+         * CONTRACT (RG-N3 / RG-J0 / CJP5 / RGP5 / OC-10 / IO-TT1 / IO-TT2):
+         *   FunctionRegistry.All.Count == 39 after the two nibble entries
+         *   (questVariableLow, questVariableHigh), the three job entries
          *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), isPlayerJob, jobGearsetExists,
-         *   and inventoryHasCoffers land.
+         *   inventoryHasCoffers, isAetherCurrentAttuned, and npcExistsNearby land.
          */
-        Assert.Equal(37, FunctionRegistry.All.Count);
+        Assert.Equal(39, FunctionRegistry.All.Count);
     }
 
     [Fact]
@@ -347,6 +348,54 @@ public class FunctionRegistryTests
         var fixed0 = Assert.IsType<Arity.Fixed>(sig.Arity);
         Assert.Equal(0, fixed0.Count);
         Assert.Empty(sig.ParameterTypes);
+        Assert.Equal(PredicateType.Bool, sig.ReturnType);
+    }
+
+    // =========================================================================
+    // isAetherCurrentAttuned / npcExistsNearby registry tests (IO-TT1 / IO-TT2)
+    // =========================================================================
+
+    [Fact]
+    public void IsAetherCurrentAttuned_Signature_IsCorrect_IOTT1()
+    {
+        /*
+         * CONTRACT (IO-TT1): Given FunctionRegistry.TryGet("isAetherCurrentAttuned", out var sig),
+         *                    Then found == true,
+         *                         sig.Name == "isAetherCurrentAttuned",
+         *                         sig.Arity is Fixed(1),
+         *                         sig.ParameterTypes == [Int],
+         *                         sig.ReturnType == Bool.
+         */
+        var found = FunctionRegistry.TryGet("isAetherCurrentAttuned", out var sig);
+
+        Assert.True(found, "isAetherCurrentAttuned should be registered in FunctionRegistry");
+        Assert.Equal("isAetherCurrentAttuned", sig.Name);
+        var fixed1 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(1, fixed1.Count);
+        Assert.Single(sig.ParameterTypes);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Bool, sig.ReturnType);
+    }
+
+    [Fact]
+    public void NpcExistsNearby_Signature_IsCorrect_IOTT2()
+    {
+        /*
+         * CONTRACT (IO-TT2): Given FunctionRegistry.TryGet("npcExistsNearby", out var sig),
+         *                    Then found == true,
+         *                         sig.Name == "npcExistsNearby",
+         *                         sig.Arity is Fixed(1),
+         *                         sig.ParameterTypes == [Int],
+         *                         sig.ReturnType == Bool.
+         */
+        var found = FunctionRegistry.TryGet("npcExistsNearby", out var sig);
+
+        Assert.True(found, "npcExistsNearby should be registered in FunctionRegistry");
+        Assert.Equal("npcExistsNearby", sig.Name);
+        var fixed1 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(1, fixed1.Count);
+        Assert.Single(sig.ParameterTypes);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
         Assert.Equal(PredicateType.Bool, sig.ReturnType);
     }
 }

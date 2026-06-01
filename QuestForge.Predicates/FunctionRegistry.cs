@@ -44,6 +44,8 @@ public static class FunctionRegistry
         new("questVariableLow",          new Fixed(2),           [Int, Int],      Int),
         new("questVariableHigh",         new Fixed(2),           [Int, Int],      Int),
         new("inventoryHasCoffers",       new Fixed(0),           [],              Bool),
+        new("isAetherCurrentAttuned",    new Fixed(1),           [Int],           Bool),
+        new("npcExistsNearby",           new Fixed(1),           [Int],           Bool),
     ];
 
     public static IReadOnlyDictionary<string, FunctionSignature> All { get; } =
