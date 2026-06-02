@@ -10,6 +10,26 @@ var rootDir       = ".";
 var format        = "text";
 var failOnWarning = false;
 
+if (args.Any(a => a is "--help" or "-h"))
+{
+    Console.WriteLine("""
+        Usage: qf-validate [options] [directory]
+
+        Validates quest and fragment JSON files under the given directory (default: current directory).
+
+        Options:
+          --format text|json   Output format (default: text)
+          --fail-on-warning    Exit with code 2 if warnings are present
+          --help, -h           Show this help message
+
+        Exit codes:
+          0  Validation passed
+          1  Validation errors found
+          2  Warnings found (only with --fail-on-warning)
+        """);
+    return 0;
+}
+
 for (var i = 0; i < args.Length; i++)
 {
     switch (args[i])
