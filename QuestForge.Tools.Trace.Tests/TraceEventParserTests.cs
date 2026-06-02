@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using QuestForge.Adapters.Tracing;
 using QuestForge.Tools.Trace.Parsing;
 using Xunit;
@@ -311,6 +313,88 @@ public sealed class TraceEventParserTests
         var runStart = Assert.IsType<RunStartEvent>(events[0]);
         Assert.Equal("r4",    runStart.RunId);
         Assert.Equal(66130u,  runStart.Data.QuestId);
+    }
+
+    // -------------------------------------------------------------------------
+    // ReadStream produces same result as ReadText
+    // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // Guard: every [JsonDerivedType] discriminator on TraceEvent is handled
+    // by the parser without warnings (catches silent omissions on new types)
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void Parser_HandlesEveryJsonDerivedTypeDiscriminator()
+    {
+        /*
+         * CONTRACT: For every [JsonDerivedType] attribute on TraceEvent,
+         *           construct a minimal valid JSONL line with that "type" discriminator,
+         *           parse it via ReadText, and verify:
+         *           1. No warnings are emitted
+         *           2. Exactly one event is returned
+         *           3. The returned event is the correct concrete type
+         *
+         * This test fails if a new TraceEvent subtype is added to questforge's
+         * TraceEvent.cs but the parser's switch isn't updated to handle it.
+         */
+
+        var derivedTypes = typeof(TraceEvent)
+            .GetCustomAttributes<JsonDerivedTypeAttribute>()
+            .ToList();
+
+        Assert.NotEmpty(derivedTypes);
+
+        foreach (var attr in derivedTypes)
+        {
+            var discriminator = (string)attr.TypeDiscriminator!;
+            var expectedType = attr.DerivedType;
+
+            var instance = CreateMinimalInstance(expectedType);
+            var json = JsonSerializer.Serialize(instance, typeof(TraceEvent),
+                TraceEventJsonContext.Default.Options);
+
+            Assert.Contains($"\"type\":\"{discriminator}\"", json);
+
+            var warnings = new StringWriter();
+            var events = TraceEventParser.ReadText(json, warnings);
+
+            Assert.True(events.Count == 1,
+                $"Discriminator '{discriminator}': expected 1 event but got {events.Count}");
+            Assert.IsType(expectedType, events[0]);
+            Assert.True(string.IsNullOrEmpty(warnings.ToString()),
+                $"Discriminator '{discriminator}' produced warnings: {warnings}");
+        }
+    }
+
+    private static TraceEvent CreateMinimalInstance(Type eventType)
+    {
+        if (eventType == typeof(RunStartEvent))
+            return Start();
+        if (eventType == typeof(RunEndEvent))
+            return End();
+        if (eventType == typeof(ObservationEvent))
+            return Obs("Test", null, ZoneValue(1));
+        if (eventType == typeof(DecisionEvent))
+            return Decision("s", "Navigate");
+        if (eventType == typeof(ActionSubmittedEvent))
+            return Submitted("Navigate", null);
+        if (eventType == typeof(ActionCompletedEvent))
+            return Completed("Navigate", "ok");
+        if (eventType == typeof(StepRecordedEvent))
+            return new StepRecordedEvent
+            {
+                RunId = "aaa",
+                Data = new StepRecordedEvent.StepRecordedData
+                {
+                    StepId = "test",
+                    SequenceNumber = 0,
+                    Step = JsonSerializer.SerializeToElement(new { type = "travel", id = "test" })
+                }
+            };
+
+        throw new NotSupportedException(
+            $"No minimal instance factory for {eventType.Name} — add one to CreateMinimalInstance");
     }
 
     // -------------------------------------------------------------------------

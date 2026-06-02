@@ -72,23 +72,12 @@ public static class TraceEventParser
         using var doc = JsonDocument.Parse(line);
         var root = doc.RootElement;
 
-        // Check if "type" discriminator is present
-        if (root.TryGetProperty("type", out var typeEl))
-        {
-            var typeStr = typeEl.GetString();
-            return typeStr switch
-            {
-                "run.start" =>
-                    JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "run.end" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "observation" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "decision" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "action.submitted" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "action.completed" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                "step.recorded"    => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
-                _ => WarnAndSkip(warnings, $"unknown type discriminator: {typeStr}")
-            };
-        }
+        // The polymorphic context handles all [JsonDerivedType] discriminators on TraceEvent.
+        // A guard test (Parser_HandlesEveryJsonDerivedTypeDiscriminator) ensures new subtypes
+        // can't be added without being covered. Unknown discriminators throw JsonException,
+        // caught by the caller (ReadText).
+        if (root.TryGetProperty("type", out _))
+            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent);
 
         // WHY: no "type" discriminator — TraceTestHelpers.MakeTrace serialises events via their
         // concrete C# type (JsonSerializer.Serialize(e, e.GetType(), ...)) which skips the
