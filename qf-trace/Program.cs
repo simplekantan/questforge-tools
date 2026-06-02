@@ -6,6 +6,7 @@ using QuestForge.Tools.Trace.Cli;
 using QuestForge.Tools.Trace.Fixture;
 using QuestForge.Tools.Trace.Parsing;
 using QuestForge.Tools.Trace.Quest;
+using QuestForge.Tools.Trace.Validation;
 
 namespace qf_trace;
 
@@ -36,6 +37,10 @@ internal static class Program
             return 1;
         }
 
+        // validate subcommand does not need quest-data root; dispatch early
+        if (cliArgs.Subcommand == CliSubcommand.ValidateTrace)
+            return RunValidateTrace(cliArgs);
+
         // Resolve quest-data root
         string? resolvedRoot;
         if (cliArgs.QuestDataRoot != null)
@@ -64,6 +69,27 @@ internal static class Program
             CliSubcommand.ExtractQuest    => RunExtractQuest(cliArgs, resolvedRoot),
             _                             => 1,
         };
+    }
+
+    private static int RunValidateTrace(CliArgs cliArgs)
+    {
+        if (cliArgs.TracePath is null)
+        {
+            Console.Error.WriteLine("qf-trace: validate requires <trace.jsonl>");
+            return 1;
+        }
+        if (!File.Exists(cliArgs.TracePath))
+        {
+            Console.Error.WriteLine($"qf-trace: trace file not found: {cliArgs.TracePath}");
+            return 1;
+        }
+
+        var result = new TraceValidator().Validate(cliArgs.TracePath);
+        Console.Out.Write(OutputFormatters.FormatTraceIssues(result));
+
+        if (result.Errors.Count > 0) return 1;
+        if (result.Warnings.Count > 0 && cliArgs.FailOnWarning) return 2;
+        return 0;
     }
 
     private static int RunExtractFixture(CliArgs cliArgs, string? resolvedRoot)
@@ -222,6 +248,9 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("  extract-quest <trace.jsonl> [--quest-data <dir>] [--out <path>]");
         Console.WriteLine("    Convert a .jsonl trace into a QuestDefinition draft.");
+        Console.WriteLine();
+        Console.WriteLine("  validate <trace.jsonl> [--fail-on-warning]");
+        Console.WriteLine("    Validate structural integrity of a JSONL trace file.");
         Console.WriteLine();
         Console.WriteLine("Quest-data root:");
         Console.WriteLine("  --quest-data <dir>          Path to the questforge-data checkout root.");

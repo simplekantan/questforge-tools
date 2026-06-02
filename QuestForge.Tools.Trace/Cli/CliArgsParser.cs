@@ -28,6 +28,7 @@ public static class CliArgsParser
             "validate-fixture"           => CliSubcommand.ValidateFixture,
             "list-fixtures"              => CliSubcommand.ListFixtures,
             "extract-quest"              => CliSubcommand.ExtractQuest,
+            "validate"                   => CliSubcommand.ValidateTrace,
             _                            => CliSubcommand.Unknown,
         };
 

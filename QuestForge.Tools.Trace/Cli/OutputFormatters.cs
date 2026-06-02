@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using QuestForge.Tools.Trace.Fixture;
+using QuestForge.Tools.Trace.Validation;
 
 namespace QuestForge.Tools.Trace.Cli;
 
@@ -25,6 +26,33 @@ public static class OutputFormatters
             sb.Append('\n');
 
         var passed = result.Errors.Count == 0 ? "Validation passed." : "Validation failed.";
+        sb.Append($"{result.Errors.Count} error(s), {result.Warnings.Count} warning(s). {passed}");
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Format a TraceValidationResult as one line per issue plus a summary line.
+    /// </summary>
+    public static string FormatTraceIssues(TraceValidationResult result)
+    {
+        var sb = new StringBuilder();
+
+        foreach (var error in result.Errors)
+        {
+            var loc = error.LineNumber.HasValue ? $"line {error.LineNumber}: " : "";
+            sb.Append($"ERROR    [{error.Code}]  {loc}{error.Message}\n");
+        }
+        foreach (var warning in result.Warnings)
+        {
+            var loc = warning.LineNumber.HasValue ? $"line {warning.LineNumber}: " : "";
+            sb.Append($"WARNING  [{warning.Code}]  {loc}{warning.Message}\n");
+        }
+
+        if (result.Errors.Count > 0 || result.Warnings.Count > 0)
+            sb.Append('\n');
+
+        var passed = result.IsValid ? "Validation passed." : "Validation failed.";
         sb.Append($"{result.Errors.Count} error(s), {result.Warnings.Count} warning(s). {passed}");
 
         return sb.ToString();

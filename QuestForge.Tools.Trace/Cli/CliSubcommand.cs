@@ -9,4 +9,5 @@ public enum CliSubcommand
     ValidateFixture,
     ListFixtures,
     ExtractQuest,
+    ValidateTrace,
 }
