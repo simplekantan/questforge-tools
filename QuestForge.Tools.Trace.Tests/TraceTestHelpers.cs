@@ -20,37 +20,34 @@ internal static class TraceTestHelpers
         string runId = "aaa",
         uint questId = 66130,
         uint schemaId = 1)
-        => new(RunId: runId, QuestId: questId, QuestSchemaId: schemaId, At: T0);
+        => new() { RunId = runId, Data = new RunStartEvent.RunStartData { QuestId = questId } };
 
     internal static RunEndEvent End(
         string outcome = "done",
         string runId = "aaa",
         double offsetSeconds = 10)
-        => new(RunId: runId, Outcome: outcome, At: T0.AddSeconds(offsetSeconds));
+        => new() { RunId = runId, Data = new RunEndEvent.RunEndData { Outcome = outcome } };
 
     internal static DecisionEvent Decision(
         string? stepId,
         string actionType,
         string runId = "aaa",
         double offsetSeconds = 1)
-        => new(RunId: runId, StepId: stepId, ActionType: actionType,
-               At: T0.AddSeconds(offsetSeconds));
+        => new() { RunId = runId, Data = new DecisionEvent.DecisionData { StepId = stepId, ActionType = actionType } };
 
     internal static ActionSubmittedEvent Submitted(
         string actionType,
         JsonElement? parameters,
         string runId = "aaa",
         double offsetSeconds = 2)
-        => new(RunId: runId, ActionType: actionType, Parameters: parameters,
-               At: T0.AddSeconds(offsetSeconds));
+        => new() { RunId = runId, Data = new ActionSubmittedEvent.ActionSubmittedData { ActionType = actionType, Parameters = parameters } };
 
     internal static ActionCompletedEvent Completed(
         string actionType,
         string outcome = "ok",
         string runId = "aaa",
         double offsetSeconds = 3)
-        => new(RunId: runId, ActionType: actionType, Outcome: outcome,
-               At: T0.AddSeconds(offsetSeconds));
+        => new() { RunId = runId, Data = new ActionCompletedEvent.ActionCompletedData { ActionType = actionType, Outcome = outcome } };
 
     internal static ObservationEvent Obs(
         string method,
@@ -58,8 +55,7 @@ internal static class TraceTestHelpers
         JsonElement? value,
         string? runId = "aaa",
         double offsetSeconds = 0.5)
-        => new(RunId: runId, Method: method, Argument: argument, Value: value,
-               At: T0.AddSeconds(offsetSeconds));
+        => new() { RunId = runId ?? "", Data = new ObservationEvent.ObservationData { Method = method, Argument = argument, Value = value } };
 
     // -------------------------------------------------------------------------
     // Parameters builders
@@ -123,12 +119,16 @@ internal static class TraceTestHelpers
         var lostArr   = (lost   ?? []).Select(t => new { itemId = t.id, qty = t.qty }).ToArray();
         var value = JsonSerializer.SerializeToElement(
             new { gained = gainedArr, lost = lostArr, newHash });
-        return new ObservationEvent(
-            RunId:    runId,
-            Method:   "InventoryChanged",
-            Argument: null,
-            Value:    value,
-            At:       T0.AddSeconds(offsetSeconds));
+        return new ObservationEvent
+        {
+            RunId = runId,
+            Data = new ObservationEvent.ObservationData
+            {
+                Method   = "InventoryChanged",
+                Argument = null,
+                Value    = value
+            }
+        };
     }
 
     /// <summary>

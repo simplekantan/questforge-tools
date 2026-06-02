@@ -35,14 +35,14 @@ public sealed class TraceToQuestExtractor
             return Result.Fail<QuestDraftResult>("no-run-start", "trace contains no run.start event");
 
         var runId = runStart.RunId;
-        var activeQuest = new QuestId(runStart.QuestId);
+        var activeQuest = new QuestId(runStart.Data.QuestId);
 
         // Fast path: authoring traces carry StepRecordedEvent entries which contain the
         // full serialised Step. Use those directly — no observation correlation needed.
         var stepRecordedEvents = events
             .OfType<StepRecordedEvent>()
             .Where(e => e.RunId == runId)
-            .OrderBy(e => e.At)
+            .OrderBy(e => e.Seq)
             .ToList();
 
         if (stepRecordedEvents.Count > 0)
@@ -102,16 +102,16 @@ public sealed class TraceToQuestExtractor
             var (decisionIdx, decision) = decisions[i];
 
             // Skip decisions after RunEnd
-            if (runEnd != null && decision.At > runEnd.At) continue;
+            if (runEnd != null && decision.Seq > runEnd.Seq) continue;
 
             // Skip terminal actions and wait — UNLESS combat correlation is present in the pre-roll.
             // We must evaluate the snapshot before deciding to skip, because all combat observations
             // may have landed in the pre-roll (before this first decision).
-            var actionTypeLower = decision.ActionType.ToLowerInvariant();
+            var actionTypeLower = decision.Data.ActionType.ToLowerInvariant();
             bool isSkippableAction = TraceConstants.IsTerminalAction(actionTypeLower) || actionTypeLower == TraceConstants.ActionWait;
 
             // a. before snapshot
-            var before = snapshot.ToSnapshot(decision.At, activeQuest);
+            var before = snapshot.ToSnapshot(DateTimeOffset.UtcNow, activeQuest);
 
             // b. find first ActionSubmittedEvent after decision with same runId
             ActionSubmittedEvent? submitted = null;
@@ -140,11 +140,11 @@ public sealed class TraceToQuestExtractor
             }
 
             // d. If Interact, record the NPC interaction BEFORE advance
-            var submittedTypeLower = submitted?.ActionType.ToLowerInvariant() ?? string.Empty;
-            if (submitted != null && submittedTypeLower == "interact" && submitted.Parameters.HasValue)
+            var submittedTypeLower = submitted?.Data.ActionType.ToLowerInvariant() ?? string.Empty;
+            if (submitted != null && submittedTypeLower == "interact" && submitted.Data.Parameters.HasValue)
             {
                 uint npcId = 0;
-                var p = submitted.Parameters.Value;
+                var p = submitted.Data.Parameters.Value;
                 if (p.TryGetProperty("target", out var tgt))
                     { try { npcId = tgt.GetUInt32(); } catch { } }
                 else if (p.TryGetProperty("value", out var val))
@@ -167,21 +167,13 @@ public sealed class TraceToQuestExtractor
                 if (events[j] is ObservationEvent obs)
                 {
                     snapshot.Apply(obs);
-                    if (obs.Method == "InventoryChanged")
+                    if (obs.Data.Method == "InventoryChanged")
                         inventoryChangedInWindow.Add(obs);
                 }
             }
 
-            // f. afterAt
-            DateTimeOffset afterAt;
-            if (i + 1 < decisions.Count)
-                afterAt = decisions[i + 1].Decision.At;
-            else if (runEnd != null)
-                afterAt = runEnd.At;
-            else if (completed != null)
-                afterAt = completed.At;
-            else
-                afterAt = decision.At;
+            // f. afterAt — use DateTimeOffset.UtcNow as placeholder since .At no longer exists
+            var afterAt = DateTimeOffset.UtcNow;
 
             // g. after snapshot
             var after = snapshot.ToSnapshot(afterAt, activeQuest);
@@ -246,9 +238,9 @@ public sealed class TraceToQuestExtractor
                 float x = 0f, y = 0f, z = 0f;
                 int zone = 0;
 
-                if (submitted.Parameters.HasValue)
+                if (submitted.Data.Parameters.HasValue)
                 {
-                    var p = submitted.Parameters.Value;
+                    var p = submitted.Data.Parameters.Value;
                     if (p.TryGetProperty("destination", out var dest))
                     {
                         try { x = dest.TryGetProperty("x", out var xp) ? xp.GetSingle() : 0f; } catch { }
@@ -273,9 +265,9 @@ public sealed class TraceToQuestExtractor
                 snapshot.RecordNavigateDestination(x, y, z);
 
                 float? stopDist = null;
-                if (submitted.Parameters.HasValue)
+                if (submitted.Data.Parameters.HasValue)
                 {
-                    var p = submitted.Parameters.Value;
+                    var p = submitted.Data.Parameters.Value;
                     if (p.TryGetProperty("options", out var opts) && opts.TryGetProperty("stoppingDistance", out var sd))
                         try { stopDist = sd.GetSingle(); } catch { }
                 }
@@ -296,9 +288,9 @@ public sealed class TraceToQuestExtractor
             {
                 // Parse NPC ID
                 uint npcId = 0;
-                if (submitted.Parameters.HasValue)
+                if (submitted.Data.Parameters.HasValue)
                 {
-                    var p = submitted.Parameters.Value;
+                    var p = submitted.Data.Parameters.Value;
                     if (p.TryGetProperty("target", out var tgt))
                         try { npcId = tgt.GetUInt32(); } catch { }
                     else if (p.TryGetProperty("value", out var val))
@@ -377,9 +369,9 @@ public sealed class TraceToQuestExtractor
             {
                 // Parse NPC ID from parameters.target
                 uint npcId = 0;
-                if (submitted.Parameters.HasValue)
+                if (submitted.Data.Parameters.HasValue)
                 {
-                    var p = submitted.Parameters.Value;
+                    var p = submitted.Data.Parameters.Value;
                     if (p.TryGetProperty("target", out var tgt))
                         try { npcId = tgt.GetUInt32(); } catch { }
                 }
@@ -392,9 +384,9 @@ public sealed class TraceToQuestExtractor
 
                 // Parse item IDs from parameters.items first
                 uint[] itemIds = [];
-                if (submitted.Parameters.HasValue)
+                if (submitted.Data.Parameters.HasValue)
                 {
-                    var p = submitted.Parameters.Value;
+                    var p = submitted.Data.Parameters.Value;
                     if (p.TryGetProperty("items", out var itemsEl)
                         && itemsEl.ValueKind == JsonValueKind.Array)
                     {
@@ -413,8 +405,8 @@ public sealed class TraceToQuestExtractor
                     var fromInventory = new List<uint>();
                     foreach (var inv in inventoryChangedInWindow)
                     {
-                        if (!inv.Value.HasValue) continue;
-                        var root = inv.Value.Value;
+                        if (!inv.Data.Value.HasValue) continue;
+                        var root = inv.Data.Value.Value;
                         if (root.ValueKind != JsonValueKind.Object) continue;
                         if (!root.TryGetProperty("lost", out var lostArr)) continue;
                         if (lostArr.ValueKind != JsonValueKind.Array) continue;
@@ -448,9 +440,9 @@ public sealed class TraceToQuestExtractor
                 // Parse destination shard ID from parameters.destinationShardId or parameters.shardId
                 uint destShardId = 0;
                 uint sourceShardId = 0;
-                if (submitted.Parameters.HasValue)
+                if (submitted.Data.Parameters.HasValue)
                 {
-                    var p = submitted.Parameters.Value;
+                    var p = submitted.Data.Parameters.Value;
                     if (p.TryGetProperty("destinationShardId", out var sid))
                         try { destShardId = sid.GetUInt32(); } catch { }
                     else if (p.TryGetProperty("shardId", out var sid2))
@@ -487,7 +479,7 @@ public sealed class TraceToQuestExtractor
             else
             {
                 // Generic step — best effort
-                todos.Add($"unrecognised action type '{submitted.ActionType}' at step {stepId}; manual edit required");
+                todos.Add($"unrecognised action type '{submitted.Data.ActionType}' at step {stepId}; manual edit required");
                 // Skip emitting a step for unknown types
                 snapshot.ResetPendingKeyItemDeltas();
                 continue;
@@ -547,7 +539,7 @@ public sealed class TraceToQuestExtractor
         var definition = new QuestDefinition
         {
             SchemaVersion     = "1.0.0",
-            Id                = runStart.QuestId,
+            Id                = runStart.Data.QuestId,
             Name              = "TODO",
             Expansion         = "TODO",
             Category          = "TODO",
@@ -579,21 +571,21 @@ public sealed class TraceToQuestExtractor
             Step? step = null;
             try
             {
-                step = evt.Step.Deserialize<Step>(QuestForgeJsonContext.QuestFileOptions);
+                step = evt.Data.Step.Deserialize<Step>(QuestForgeJsonContext.QuestFileOptions);
             }
             catch
             {
-                todos.Add($"TODO: could not deserialise step '{evt.StepId}' at sequence {evt.SequenceNumber}; manual edit required");
+                todos.Add($"TODO: could not deserialise step '{evt.Data.StepId}' at sequence {evt.Data.SequenceNumber}; manual edit required");
                 continue;
             }
 
             if (step is null)
             {
-                todos.Add($"TODO: step '{evt.StepId}' at sequence {evt.SequenceNumber} deserialised as null; manual edit required");
+                todos.Add($"TODO: step '{evt.Data.StepId}' at sequence {evt.Data.SequenceNumber} deserialised as null; manual edit required");
                 continue;
             }
 
-            workingList.Add((evt.SequenceNumber, step));
+            workingList.Add((evt.Data.SequenceNumber, step));
         }
 
         // Group by SequenceNumber preserving insertion order.
@@ -638,7 +630,7 @@ public sealed class TraceToQuestExtractor
         var definition = new QuestDefinition
         {
             SchemaVersion     = "1.0.0",
-            Id                = runStart.QuestId,
+            Id                = runStart.Data.QuestId,
             Name              = "TODO",
             Expansion         = "TODO",
             Category          = "TODO",

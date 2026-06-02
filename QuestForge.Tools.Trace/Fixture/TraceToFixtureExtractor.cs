@@ -93,7 +93,7 @@ public sealed class TraceToFixtureExtractor
             return Result.Fail<FixtureModel>("no-run-start", "trace contains no run.start event");
 
         var runId = runStart.RunId;
-        var questId = runStart.QuestId;
+        var questId = runStart.Data.QuestId;
 
         // Step 2-4: build transitions from DecisionEvents
         var transitions = new List<TransitionEntry>();
@@ -104,12 +104,12 @@ public sealed class TraceToFixtureExtractor
             if (ev is not DecisionEvent decision) continue;
             if (decision.RunId != runId) continue;
 
-            var actionType = decision.ActionType.ToLowerInvariant();
+            var actionType = decision.Data.ActionType.ToLowerInvariant();
 
             // Skip terminal actions
             if (TraceConstants.IsTerminalAction(actionType)) continue;
 
-            var entry = new TransitionEntry(decision.StepId, actionType);
+            var entry = new TransitionEntry(decision.Data.StepId, actionType);
 
             // Deduplicate consecutive identical pairs
             if (lastAppended == null ||
@@ -124,8 +124,8 @@ public sealed class TraceToFixtureExtractor
         // Step 5: find RunEndEvent — prefer a real engine terminal outcome ("done"/"awaitUser")
         // over the EngineHost cleanup marker ("ended") which may follow it.
         var runEnds = events.OfType<RunEndEvent>().Where(e => e.RunId == runId).ToList();
-        string? terminalOutcome = runEnds.FirstOrDefault(e => e.Outcome is "done" or "awaitUser")?.Outcome
-                                  ?? runEnds.LastOrDefault()?.Outcome; // do not lowercase
+        string? terminalOutcome = runEnds.FirstOrDefault(e => e.Data.Outcome is "done" or "awaitUser")?.Data.Outcome
+                                  ?? runEnds.LastOrDefault()?.Data.Outcome; // do not lowercase
 
         // Step 6: resolve questFile
         string questFile;

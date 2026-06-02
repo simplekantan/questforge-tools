@@ -32,8 +32,7 @@ public sealed class TraceToQuestExtractorCombatTests
     // ─── Event builders ───────────────────────────────────────────────────────
 
     private static ObservationEvent ObsMs(string method, JsonElement? argument, JsonElement? value, double ms)
-        => new(RunId: "aaa", Method: method, Argument: argument, Value: value,
-               At: BaseTime.AddMilliseconds(ms));
+        => new() { RunId = "aaa", Data = new ObservationEvent.ObservationData { Method = method, Argument = argument, Value = value } };
 
     private static JsonElement InCombatValue(bool v)
         => JsonSerializer.SerializeToElement(new { value = v });
@@ -75,7 +74,7 @@ public sealed class TraceToQuestExtractorCombatTests
     {
         var events = new List<TraceEvent>
         {
-            new RunStartEvent("aaa", QuestId65847, 1u, BaseTime),
+            new RunStartEvent { RunId = "aaa", Data = new RunStartEvent.RunStartData { QuestId = QuestId65847 } },
 
             // Zone + position
             ObsMs("GetPlayerZone",     null, ZoneValue(148u),             100),
@@ -103,24 +102,24 @@ public sealed class TraceToQuestExtractorCombatTests
             ObsMs("EnemyKilled", null, EnemyKilledValue(347u), 1100),
 
             // Decision
-            new DecisionEvent("aaa", null, decisionActionType, BaseTime.AddMilliseconds(1200)),
+            new DecisionEvent { RunId = "aaa", Data = new DecisionEvent.DecisionData { StepId = null, ActionType = decisionActionType } },
         };
 
         if (includeSubmitted)
         {
-            events.Add(new ActionSubmittedEvent(
-                RunId: "aaa",
-                ActionType: decisionActionType,
-                Parameters: null,
-                At: BaseTime.AddMilliseconds(1250)));
-            events.Add(new ActionCompletedEvent(
-                RunId: "aaa",
-                ActionType: decisionActionType,
-                Outcome: "ok",
-                At: BaseTime.AddMilliseconds(1300)));
+            events.Add(new ActionSubmittedEvent
+            {
+                RunId = "aaa",
+                Data = new ActionSubmittedEvent.ActionSubmittedData { ActionType = decisionActionType, Parameters = null }
+            });
+            events.Add(new ActionCompletedEvent
+            {
+                RunId = "aaa",
+                Data = new ActionCompletedEvent.ActionCompletedData { ActionType = decisionActionType, Outcome = "ok" }
+            });
         }
 
-        events.Add(new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000)));
+        events.Add(new RunEndEvent { RunId = "aaa", Data = new RunEndEvent.RunEndData { Outcome = "done" } });
         return events;
     }
 
@@ -133,7 +132,7 @@ public sealed class TraceToQuestExtractorCombatTests
     {
         return
         [
-            new RunStartEvent("aaa", QuestId65847, 1u, BaseTime),
+            new RunStartEvent { RunId = "aaa", Data = new RunStartEvent.RunStartData { QuestId = QuestId65847 } },
 
             ObsMs("GetPlayerZone",     null, ZoneValue(148u),             100),
             ObsMs("GetPlayerPosition", null, PositionValue(10f, 0f, 20f), 200),
@@ -153,13 +152,11 @@ public sealed class TraceToQuestExtractorCombatTests
                 QuestVariablesValue([0x01, 0, 0, 0, 0, 0]), 600),
 
             // Navigate decision so extractor has an action boundary to process
-            new DecisionEvent("aaa", null, "navigate", BaseTime.AddMilliseconds(800)),
-            new ActionSubmittedEvent("aaa", "Navigate", NavParams(10f, 0f, 20f, 148),
-                BaseTime.AddMilliseconds(900)),
-            new ActionCompletedEvent("aaa", "Navigate", "Arrived",
-                BaseTime.AddMilliseconds(1000)),
+            new DecisionEvent { RunId = "aaa", Data = new DecisionEvent.DecisionData { StepId = null, ActionType = "navigate" } },
+            new ActionSubmittedEvent { RunId = "aaa", Data = new ActionSubmittedEvent.ActionSubmittedData { ActionType = "Navigate", Parameters = NavParams(10f, 0f, 20f, 148) } },
+            new ActionCompletedEvent { RunId = "aaa", Data = new ActionCompletedEvent.ActionCompletedData { ActionType = "Navigate", Outcome = "Arrived" } },
 
-            new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000))
+            new RunEndEvent { RunId = "aaa", Data = new RunEndEvent.RunEndData { Outcome = "done" } }
         ];
     }
 

@@ -78,7 +78,7 @@ public static class TraceEventParser
             var typeStr = typeEl.GetString();
             return typeStr switch
             {
-                "run.start" when root.TryGetProperty("questId", out _) =>
+                "run.start" =>
                     JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "run.end" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
                 "observation" => JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.TraceEvent),
@@ -99,27 +99,31 @@ public static class TraceEventParser
 
     private static TraceEvent? DetectAndDeserialize(JsonElement root, string line, TextWriter? warnings)
     {
-        var opts = TraceEventJsonContext.Default.Options;
+        // Unique property heuristics (most-specific first).
+        // New envelope+data shape: check inside the "data" sub-object.
+        if (root.TryGetProperty("data", out var data))
+        {
+            if (data.TryGetProperty("questId", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.RunStartEvent);
 
-        // Unique property heuristics (most-specific first):
-        if (root.TryGetProperty("questId", out _) && root.TryGetProperty("questSchemaId", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.RunStartEvent);
+            if (data.TryGetProperty("outcome", out _) && !data.TryGetProperty("actionType", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.RunEndEvent);
 
-        if (root.TryGetProperty("outcome", out _) && root.TryGetProperty("runId", out _)
-            && !root.TryGetProperty("actionType", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.RunEndEvent);
+            if (data.TryGetProperty("method", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ObservationEvent);
 
-        if (root.TryGetProperty("method", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ObservationEvent);
+            if (data.TryGetProperty("stepId", out _) && !data.TryGetProperty("step", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.DecisionEvent);
 
-        if (root.TryGetProperty("stepId", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.DecisionEvent);
+            if (data.TryGetProperty("actionType", out _) && data.TryGetProperty("parameters", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ActionSubmittedEvent);
 
-        if (root.TryGetProperty("actionType", out _) && root.TryGetProperty("parameters", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ActionSubmittedEvent);
+            if (data.TryGetProperty("actionType", out _) && data.TryGetProperty("outcome", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ActionCompletedEvent);
 
-        if (root.TryGetProperty("actionType", out _) && root.TryGetProperty("outcome", out _))
-            return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.ActionCompletedEvent);
+            if (data.TryGetProperty("stepId", out _) && data.TryGetProperty("step", out _))
+                return JsonSerializer.Deserialize(line, TraceEventJsonContext.Default.StepRecordedEvent);
+        }
 
         warnings?.WriteLine($"[warn] skipping unrecognised event shape");
         return null;

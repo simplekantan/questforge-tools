@@ -29,8 +29,7 @@ public sealed class TraceToQuestExtractorPurchaseTests
     // ── Event builders (mirror combat test helpers) ───────────────────────────
 
     private static ObservationEvent ObsMs(string method, JsonElement? argument, JsonElement? value, double ms)
-        => new(RunId: "aaa", Method: method, Argument: argument, Value: value,
-               At: BaseTime.AddMilliseconds(ms));
+        => new() { RunId = "aaa", Data = new ObservationEvent.ObservationData { Method = method, Argument = argument, Value = value } };
 
     private static JsonElement ShopOpenedValue(bool open)
         => JsonSerializer.SerializeToElement(new { value = open });
@@ -67,7 +66,7 @@ public sealed class TraceToQuestExtractorPurchaseTests
     {
         var events = new List<TraceEvent>
         {
-            new RunStartEvent("aaa", QuestId70001, 1u, BaseTime),
+            new RunStartEvent { RunId = "aaa", Data = new RunStartEvent.RunStartData { QuestId = QuestId70001 } },
 
             // Zone + position
             ObsMs("GetPlayerZone",     null, ZoneValue(128u),             100),
@@ -92,22 +91,26 @@ public sealed class TraceToQuestExtractorPurchaseTests
             ObsMs("ShopOpened", null, ShopOpenedValue(false), 450),
 
             // Decision
-            new DecisionEvent("aaa", null, decisionActionType, BaseTime.AddMilliseconds(500)),
+            new DecisionEvent { RunId = "aaa", Data = new DecisionEvent.DecisionData { StepId = null, ActionType = decisionActionType } },
 
             // Submitted interact carrying the vendor NPC id (wires LastNpcInteracted via RecordInteract)
-            new ActionSubmittedEvent(
-                RunId: "aaa",
-                ActionType: "interact",
-                Parameters: JsonSerializer.SerializeToElement(new { target = VendorNpcId }),
-                At: BaseTime.AddMilliseconds(510)),
+            new ActionSubmittedEvent
+            {
+                RunId = "aaa",
+                Data = new ActionSubmittedEvent.ActionSubmittedData
+                {
+                    ActionType = "interact",
+                    Parameters = JsonSerializer.SerializeToElement(new { target = VendorNpcId })
+                }
+            },
 
-            new ActionCompletedEvent(
-                RunId: "aaa",
-                ActionType: "interact",
-                Outcome: "ok",
-                At: BaseTime.AddMilliseconds(520)),
+            new ActionCompletedEvent
+            {
+                RunId = "aaa",
+                Data = new ActionCompletedEvent.ActionCompletedData { ActionType = "interact", Outcome = "ok" }
+            },
 
-            new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000))
+            new RunEndEvent { RunId = "aaa", Data = new RunEndEvent.RunEndData { Outcome = "done" } }
         };
 
         return events;
@@ -121,7 +124,7 @@ public sealed class TraceToQuestExtractorPurchaseTests
     {
         return
         [
-            new RunStartEvent("aaa", QuestId70001, 1u, BaseTime),
+            new RunStartEvent { RunId = "aaa", Data = new RunStartEvent.RunStartData { QuestId = QuestId70001 } },
 
             ObsMs("GetPlayerZone",     null, ZoneValue(128u),             100),
             ObsMs("GetPlayerPosition", null, PositionValue(10f, 0f, 20f), 150),
@@ -134,9 +137,9 @@ public sealed class TraceToQuestExtractorPurchaseTests
             ObsMs("ShopOpened", null, ShopOpenedValue(false), 350),
 
             // Wait decision (only action in the window)
-            new DecisionEvent("aaa", null, "wait", BaseTime.AddMilliseconds(400)),
+            new DecisionEvent { RunId = "aaa", Data = new DecisionEvent.DecisionData { StepId = null, ActionType = "wait" } },
 
-            new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000))
+            new RunEndEvent { RunId = "aaa", Data = new RunEndEvent.RunEndData { Outcome = "done" } }
         ];
     }
 
@@ -258,7 +261,7 @@ public sealed class TraceToQuestExtractorPurchaseTests
 
         var events = new List<TraceEvent>
         {
-            new RunStartEvent("aaa", QuestId70001, 1u, BaseTime),
+            new RunStartEvent { RunId = "aaa", Data = new RunStartEvent.RunStartData { QuestId = QuestId70001 } },
 
             // Zone + position (mirrors PE1 exactly)
             ObsMs("GetPlayerZone",     null, ZoneValue(128u),             100),
@@ -268,8 +271,11 @@ public sealed class TraceToQuestExtractorPurchaseTests
             ObsMs("CurrencyBalance", null, CurrencyBalanceValue(10_000L, 0), 250),
 
             // Shop opens — G5 payload with GC axes (2, 1)
-            new ObservationEvent("aaa", "ShopOpened", null, shopOpenedWithGc,
-                BaseTime.AddMilliseconds(300)),
+            new ObservationEvent
+            {
+                RunId = "aaa",
+                Data = new ObservationEvent.ObservationData { Method = "ShopOpened", Argument = null, Value = shopOpenedWithGc }
+            },
 
             // Item count rose
             ObsMs("VendorItemCount", null, VendorItemCountValue(ItemId1601, 1), 350),
@@ -281,21 +287,25 @@ public sealed class TraceToQuestExtractorPurchaseTests
             ObsMs("ShopOpened", null, ShopOpenedValue(false), 450),
 
             // Decision + interact action (mirrors PE1 exactly)
-            new DecisionEvent("aaa", null, "wait", BaseTime.AddMilliseconds(500)),
+            new DecisionEvent { RunId = "aaa", Data = new DecisionEvent.DecisionData { StepId = null, ActionType = "wait" } },
 
-            new ActionSubmittedEvent(
-                RunId: "aaa",
-                ActionType: "interact",
-                Parameters: JsonSerializer.SerializeToElement(new { target = VendorNpcId }),
-                At: BaseTime.AddMilliseconds(510)),
+            new ActionSubmittedEvent
+            {
+                RunId = "aaa",
+                Data = new ActionSubmittedEvent.ActionSubmittedData
+                {
+                    ActionType = "interact",
+                    Parameters = JsonSerializer.SerializeToElement(new { target = VendorNpcId })
+                }
+            },
 
-            new ActionCompletedEvent(
-                RunId: "aaa",
-                ActionType: "interact",
-                Outcome: "ok",
-                At: BaseTime.AddMilliseconds(520)),
+            new ActionCompletedEvent
+            {
+                RunId = "aaa",
+                Data = new ActionCompletedEvent.ActionCompletedData { ActionType = "interact", Outcome = "ok" }
+            },
 
-            new RunEndEvent("aaa", "done", BaseTime.AddMilliseconds(2000))
+            new RunEndEvent { RunId = "aaa", Data = new RunEndEvent.RunEndData { Outcome = "done" } }
         };
 
         // WHEN

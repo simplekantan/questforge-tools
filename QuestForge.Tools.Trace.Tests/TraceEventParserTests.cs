@@ -194,14 +194,14 @@ public sealed class TraceEventParserTests
         // Assert
         Assert.Single(events);
         var parsed = Assert.IsType<ObservationEvent>(events[0]);
-        Assert.Equal("InventoryChanged", parsed.Method);
+        Assert.Equal("InventoryChanged", parsed.Data.Method);
         Assert.Equal("r1", parsed.RunId);
-        Assert.True(parsed.Value.HasValue);
-        var gained = parsed.Value!.Value.GetProperty("gained").EnumerateArray().ToList();
+        Assert.True(parsed.Data.Value.HasValue);
+        var gained = parsed.Data.Value!.Value.GetProperty("gained").EnumerateArray().ToList();
         Assert.Single(gained);
         Assert.Equal(101u, gained[0].GetProperty("itemId").GetUInt32());
         Assert.Equal(1, gained[0].GetProperty("qty").GetInt32());
-        Assert.Equal(42u, parsed.Value.Value.GetProperty("newHash").GetUInt32());
+        Assert.Equal(42u, parsed.Data.Value.Value.GetProperty("newHash").GetUInt32());
     }
 
     // -------------------------------------------------------------------------
@@ -239,14 +239,14 @@ public sealed class TraceEventParserTests
         // Assert
         Assert.Single(events);
         var parsed = Assert.IsType<ObservationEvent>(events[0]);
-        Assert.Equal("InventoryChanged", parsed.Method);
+        Assert.Equal("InventoryChanged", parsed.Data.Method);
         Assert.Equal("r2", parsed.RunId);
-        Assert.True(parsed.Value.HasValue);
-        var gained = parsed.Value!.Value.GetProperty("gained").EnumerateArray().ToList();
+        Assert.True(parsed.Data.Value.HasValue);
+        var gained = parsed.Data.Value!.Value.GetProperty("gained").EnumerateArray().ToList();
         Assert.Single(gained);
         Assert.Equal(202u, gained[0].GetProperty("itemId").GetUInt32());
         Assert.Equal(2, gained[0].GetProperty("qty").GetInt32());
-        Assert.Equal(99u, parsed.Value.Value.GetProperty("newHash").GetUInt32());
+        Assert.Equal(99u, parsed.Data.Value.Value.GetProperty("newHash").GetUInt32());
     }
 
     // -------------------------------------------------------------------------
@@ -280,11 +280,11 @@ public sealed class TraceEventParserTests
         // Assert
         Assert.Single(events);
         var parsed = Assert.IsType<ObservationEvent>(events[0]);
-        Assert.Equal("InventoryChanged", parsed.Method);
-        Assert.True(parsed.Value.HasValue);
-        Assert.Empty(parsed.Value!.Value.GetProperty("gained").EnumerateArray());
-        Assert.Empty(parsed.Value.Value.GetProperty("lost").EnumerateArray());
-        Assert.Equal(0u, parsed.Value.Value.GetProperty("newHash").GetUInt32());
+        Assert.Equal("InventoryChanged", parsed.Data.Method);
+        Assert.True(parsed.Data.Value.HasValue);
+        Assert.Empty(parsed.Data.Value!.Value.GetProperty("gained").EnumerateArray());
+        Assert.Empty(parsed.Data.Value.Value.GetProperty("lost").EnumerateArray());
+        Assert.Equal(0u, parsed.Data.Value.Value.GetProperty("newHash").GetUInt32());
     }
 
     // -------------------------------------------------------------------------
@@ -310,7 +310,7 @@ public sealed class TraceEventParserTests
         Assert.Single(events);
         var runStart = Assert.IsType<RunStartEvent>(events[0]);
         Assert.Equal("r4",    runStart.RunId);
-        Assert.Equal(66130u,  runStart.QuestId);
+        Assert.Equal(66130u,  runStart.Data.QuestId);
     }
 
     // -------------------------------------------------------------------------

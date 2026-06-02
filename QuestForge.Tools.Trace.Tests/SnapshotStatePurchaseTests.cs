@@ -42,7 +42,7 @@ public sealed class SnapshotStatePurchaseTests
     // ── Event builders (mirror combat tests ObsAt shape) ─────────────────────
 
     private static ObservationEvent ObsAt(string method, JsonElement? argument, JsonElement? value, DateTimeOffset at)
-        => new(RunId: "aaa", Method: method, Argument: argument, Value: value, At: at);
+        => new() { RunId = "aaa", Data = new ObservationEvent.ObservationData { Method = method, Argument = argument, Value = value } };
 
     /// <summary>ShopOpened {value: bool} — mirrors InCombat shape.</summary>
     private static ObservationEvent ShopOpenedObs(bool open, DateTimeOffset at)

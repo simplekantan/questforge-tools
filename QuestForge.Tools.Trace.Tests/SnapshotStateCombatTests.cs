@@ -49,7 +49,7 @@ public sealed class SnapshotStateCombatTests
     // ─── Event builders ───────────────────────────────────────────────────────
 
     private static ObservationEvent ObsAt(string method, JsonElement? argument, JsonElement? value, DateTimeOffset at)
-        => new(RunId: "aaa", Method: method, Argument: argument, Value: value, At: at);
+        => new() { RunId = "aaa", Data = new ObservationEvent.ObservationData { Method = method, Argument = argument, Value = value } };
 
     private static JsonElement InCombatValue(bool inCombat)
         => JsonSerializer.SerializeToElement(new { value = inCombat });
