@@ -81,23 +81,23 @@ public sealed class SnapshotState
     public bool Apply(ObservationEvent ev)
     {
         // Check for failure-shaped value (has "failure" key)
-        if (ev.Value.HasValue && ev.Value.Value.ValueKind == JsonValueKind.Object
-            && ev.Value.Value.TryGetProperty("failure", out _))
+        if (ev.Data.Value.HasValue && ev.Data.Value.Value.ValueKind == JsonValueKind.Object
+            && ev.Data.Value.Value.TryGetProperty("failure", out _))
             return true; // recognised but skipped
 
-        switch (ev.Method)
+        switch (ev.Data.Method)
         {
             case "GetPlayerZone":
-                if (ev.Value.HasValue
-                    && ev.Value.Value.TryGetProperty("value", out var zv)
+                if (ev.Data.Value.HasValue
+                    && ev.Data.Value.Value.TryGetProperty("value", out var zv)
                     && zv.TryGetUInt32(out var zoneVal))
                     Zone = new ZoneId(zoneVal);
                 return true;
 
             case "GetPlayerPosition":
-                if (ev.Value.HasValue && ev.Value.Value.ValueKind == JsonValueKind.Object)
+                if (ev.Data.Value.HasValue && ev.Data.Value.Value.ValueKind == JsonValueKind.Object)
                 {
-                    var root = ev.Value.Value;
+                    var root = ev.Data.Value.Value;
                     var x = root.TryGetProperty("x", out var xp) && xp.TryGetSingle(out var xv) ? xv : 0f;
                     var y = root.TryGetProperty("y", out var yp) && yp.TryGetSingle(out var yv) ? yv : 0f;
                     var z = root.TryGetProperty("z", out var zp) && zp.TryGetSingle(out var zv2) ? zv2 : 0f;
@@ -109,8 +109,8 @@ public sealed class SnapshotState
             {
                 // Only the hostile-object shape is recognised (D1).
                 // Plain numbers and other shapes fall through to return false (unrecognised).
-                if (!ev.Value.HasValue) return false;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return false;
+                var val = ev.Data.Value.Value;
                 if (val.ValueKind != JsonValueKind.Object) return false;
                 if (!val.TryGetProperty("kind", out var kindEl)) return false;
                 if (kindEl.GetString() != "hostile") return false;
@@ -127,8 +127,8 @@ public sealed class SnapshotState
 
             case "InCombat":
             {
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var val = ev.Data.Value.Value;
                 bool inCombat;
                 if (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False)
                     inCombat = val.GetBoolean();
@@ -160,8 +160,8 @@ public sealed class SnapshotState
 
             case "CurrencyBalance":
             {
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var val = ev.Data.Value.Value;
                 if (val.ValueKind != JsonValueKind.Object) return true;
                 try
                 {
@@ -176,8 +176,8 @@ public sealed class SnapshotState
 
             case "ShopOpened":
             {
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var val = ev.Data.Value.Value;
                 bool open;
                 JsonElement? objPayload = null;
                 if (val.ValueKind == JsonValueKind.True || val.ValueKind == JsonValueKind.False)
@@ -217,8 +217,8 @@ public sealed class SnapshotState
 
             case "VendorItemCount":
             {
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var val = ev.Data.Value.Value;
                 if (val.ValueKind != JsonValueKind.Object) return true;
                 if (!_purchaseSpanStarted) return true;
                 try
@@ -236,10 +236,10 @@ public sealed class SnapshotState
 
             case "GetQuestVariables":
             {
-                if (!QuestArgMatches(ev) || !ev.Value.HasValue) return true;
+                if (!QuestArgMatches(ev) || !ev.Data.Value.HasValue) return true;
 
                 // Parse value: array shape [v0..v5] or object-wrapped {"value":[...]}
-                var val = ev.Value.Value;
+                var val = ev.Data.Value.Value;
                 JsonElement arrayEl;
                 if (val.ValueKind == JsonValueKind.Array)
                     arrayEl = val;
@@ -293,34 +293,34 @@ public sealed class SnapshotState
             }
 
             case "GetQuestSequence":
-                if (QuestArgMatches(ev) && ev.Value.HasValue
-                    && ev.Value.Value.TryGetInt32(out var seq))
+                if (QuestArgMatches(ev) && ev.Data.Value.HasValue
+                    && ev.Data.Value.Value.TryGetInt32(out var seq))
                     QuestSequence = seq;
                 return true;
 
             case "GetQuestFlags":
-                if (QuestArgMatches(ev) && ev.Value.HasValue
-                    && ev.Value.Value.TryGetUInt32(out var flags))
+                if (QuestArgMatches(ev) && ev.Data.Value.HasValue
+                    && ev.Data.Value.Value.TryGetUInt32(out var flags))
                     QuestFlags = flags;
                 return true;
 
             case "IsQuestAccepted":
-                if (QuestArgMatches(ev) && ev.Value.HasValue
-                    && ev.Value.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    QuestAccepted = ev.Value.Value.GetBoolean();
+                if (QuestArgMatches(ev) && ev.Data.Value.HasValue
+                    && ev.Data.Value.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    QuestAccepted = ev.Data.Value.Value.GetBoolean();
                 return true;
 
             case "IsQuestComplete":
-                if (QuestArgMatches(ev) && ev.Value.HasValue
-                    && ev.Value.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
-                    QuestCompleted = ev.Value.Value.GetBoolean();
+                if (QuestArgMatches(ev) && ev.Data.Value.HasValue
+                    && ev.Data.Value.Value.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                    QuestCompleted = ev.Data.Value.Value.GetBoolean();
                 return true;
 
             case "IsAetheryteAttuned":
             {
                 // Parse argument: {"value": uint} → aetheryteId
-                if (!ev.Argument.HasValue) return true;
-                var arg = ev.Argument.Value;
+                if (!ev.Data.Argument.HasValue) return true;
+                var arg = ev.Data.Argument.Value;
                 uint argId = 0;
                 if (arg.ValueKind == JsonValueKind.Number)
                     { try { argId = arg.GetUInt32(); } catch { } }
@@ -330,8 +330,8 @@ public sealed class SnapshotState
                 if (argId == 0) return true;
 
                 // Parse value: integer 1, boolean true → set LastAttuned; 0 or false → no-op
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var val = ev.Data.Value.Value;
                 bool isTruthy = val.ValueKind == JsonValueKind.True
                     || (val.ValueKind == JsonValueKind.Number && val.TryGetInt32(out var iv) && iv == 1)
                     // object-wrapped: {"value": true/1}
@@ -348,8 +348,8 @@ public sealed class SnapshotState
             case "AethernetShardTargeted":
             {
                 // Parse value as plain uint (or {"value": uint})
-                if (!ev.Value.HasValue) return true;
-                var val = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var val = ev.Data.Value.Value;
                 uint shardId = 0;
                 if (val.ValueKind == JsonValueKind.Number)
                     { try { shardId = val.GetUInt32(); } catch { } }
@@ -363,8 +363,8 @@ public sealed class SnapshotState
             case "GetItemCount":
             {
                 // Parse argument: {"value": uint} → itemId
-                if (!ev.Argument.HasValue || !ev.Value.HasValue) return true;
-                var arg = ev.Argument.Value;
+                if (!ev.Data.Argument.HasValue || !ev.Data.Value.HasValue) return true;
+                var arg = ev.Data.Argument.Value;
                 uint itemId = 0;
                 if (arg.ValueKind == JsonValueKind.Object && arg.TryGetProperty("value", out var av))
                     { try { itemId = av.GetUInt32(); } catch { return true; } }
@@ -374,7 +374,7 @@ public sealed class SnapshotState
                 if (itemId == 0) return true;
 
                 // Parse value: {"value": int} or plain int; guard against failure shape
-                var val = ev.Value.Value;
+                var val = ev.Data.Value.Value;
                 int count = 0;
                 if (val.ValueKind == JsonValueKind.Object && val.TryGetProperty("value", out var vv))
                     { try { count = vv.GetInt32(); } catch { return true; } }
@@ -390,8 +390,8 @@ public sealed class SnapshotState
             case "InventoryChanged":
             {
                 // Value shape: {"gained":[{"itemId":N,"qty":N}],"lost":[...],"newHash":N}
-                if (!ev.Value.HasValue) return true;
-                var root = ev.Value.Value;
+                if (!ev.Data.Value.HasValue) return true;
+                var root = ev.Data.Value.Value;
                 if (root.ValueKind != JsonValueKind.Object) return true;
 
                 if (root.TryGetProperty("gained", out var gainedArr)
@@ -505,8 +505,8 @@ public sealed class SnapshotState
 
     private bool QuestArgMatches(ObservationEvent ev)
     {
-        if (!ev.Argument.HasValue) return false;
-        var arg = ev.Argument.Value;
+        if (!ev.Data.Argument.HasValue) return false;
+        var arg = ev.Data.Argument.Value;
 
         // Old traces may have written the quest ID as a plain JSON number (e.g. 66104)
         // instead of an object ({"value": 66104}). Handle both forms.
