@@ -30,6 +30,7 @@ public static class CliArgsParser
             "extract-quest"              => CliSubcommand.ExtractQuest,
             "validate"                   => CliSubcommand.ValidateTrace,
             "redact"                     => CliSubcommand.Redact,
+            "state-changes"              => CliSubcommand.StateChanges,
             _                            => CliSubcommand.Unknown,
         };
 

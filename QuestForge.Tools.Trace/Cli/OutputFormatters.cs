@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using QuestForge.Tools.Trace.Analysis;
 using QuestForge.Tools.Trace.Fixture;
 using QuestForge.Tools.Trace.Redaction;
 using QuestForge.Tools.Trace.Validation;
@@ -174,6 +175,41 @@ public static class OutputFormatters
             sb.Append("WARNING: excluded fields found (recording proxy should have prevented these):\n");
             foreach (var hit in report.ExcludedFieldHits)
                 sb.Append($"  line {hit.LineNumber}: \"{hit.PropertyName}\"\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>
+    /// Format a QuestStateChangeReport as a human-readable timeline.
+    /// </summary>
+    public static string FormatStateChanges(QuestStateChangeReport report)
+    {
+        var sb = new StringBuilder();
+
+        if (report.QuestId is null)
+        {
+            sb.Append("No run.start found; cannot determine quest ID.");
+            return sb.ToString();
+        }
+
+        sb.Append($"Quest {report.QuestId} state changes:");
+
+        if (report.Changes.Count == 0)
+        {
+            sb.Append("\n  (none)");
+            return sb.ToString();
+        }
+
+        foreach (var c in report.Changes)
+        {
+            sb.Append($"\n  seq {c.Seq,-4}");
+            sb.Append($" {c.Kind,-9}");
+            sb.Append($" {c.PreviousValue}->{c.NewValue}");
+            if (c.Detail is not null)
+                sb.Append($"  ({c.Detail})");
+            if (c.AfterStepId is not null)
+                sb.Append($"  after: {c.AfterStepId} / {c.AfterActionType}");
         }
 
         return sb.ToString();
