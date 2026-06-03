@@ -252,8 +252,23 @@ internal static class Program
             return 1;
         }
 
+        IQuestMetadataResolver resolver = NullMetadataResolver.Instance;
+        var sqpackPath = cliArgs.SqpackPath ?? QuestForge.Tools.Trace.Cli.SqpackPathResolver.Resolve();
+        if (sqpackPath is not null && Directory.Exists(sqpackPath))
+        {
+            try
+            {
+                resolver = new LuminaMetadataResolver(sqpackPath);
+                Console.Error.WriteLine($"qf-trace: using Lumina data from {sqpackPath}");
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"qf-trace: lumina init failed ({ex.Message}); continuing without name resolution");
+            }
+        }
+
         var events = TraceEventParser.ReadFile(cliArgs.TracePath, Console.Error);
-        var result = new TraceToQuestExtractor().Extract(events);
+        var result = new TraceToQuestExtractor(resolver: resolver).Extract(events);
 
         if (result is Result<QuestDraftResult>.Failure f)
         {
@@ -305,8 +320,10 @@ internal static class Program
         Console.WriteLine("  list-fixtures [--quest-data <dir>] [--format text|json]");
         Console.WriteLine("    Enumerate fixtures and show capability coverage / gaps.");
         Console.WriteLine();
-        Console.WriteLine("  extract-quest <trace.jsonl> [--quest-data <dir>] [--out <path>]");
+        Console.WriteLine("  extract-quest <trace.jsonl> [--quest-data <dir>] [--out <path>] [--sqpack <path>]");
         Console.WriteLine("    Convert a .jsonl trace into a QuestDefinition draft.");
+        Console.WriteLine("    With --sqpack, resolves quest name, expansion, category, and requirements");
+        Console.WriteLine("    from FFXIV game data via Lumina. Auto-detects standard install if omitted.");
         Console.WriteLine();
         Console.WriteLine("  validate <trace.jsonl> [--fail-on-warning]");
         Console.WriteLine("    Validate structural integrity of a JSONL trace file.");

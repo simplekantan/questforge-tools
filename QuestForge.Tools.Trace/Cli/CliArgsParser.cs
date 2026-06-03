@@ -5,7 +5,7 @@ public static class CliArgsParser
     // Value-consuming flags (require a following token)
     private static readonly HashSet<string> ValueFlags = new(StringComparer.Ordinal)
     {
-        "--quest-data", "--out", "--format",
+        "--quest-data", "--out", "--format", "--sqpack",
     };
 
     // Boolean flags (no following token)
@@ -45,6 +45,7 @@ public static class CliArgsParser
         string? fixturePath    = null;
         string? questDataRoot  = null;
         string? outputPath     = null;
+        string? sqpackPath     = null;
         bool    stdout         = false;
         bool    failOnWarning  = false;
         string  format         = "text";
@@ -73,6 +74,7 @@ public static class CliArgsParser
                         case "--quest-data": questDataRoot = value; break;
                         case "--out":        outputPath    = value; break;
                         case "--format":     format        = value; break;
+                        case "--sqpack":     sqpackPath    = value; break;
                     }
                     i += 2;
                 }
@@ -126,6 +128,7 @@ public static class CliArgsParser
             FixturePath:   fixturePath,
             QuestDataRoot: questDataRoot,
             OutputPath:    outputPath,
+            SqpackPath:    sqpackPath,
             Stdout:        stdout,
             FailOnWarning: failOnWarning,
             Format:        format,
@@ -140,6 +143,7 @@ public static class CliArgsParser
             FixturePath:   null,
             QuestDataRoot: null,
             OutputPath:    null,
+            SqpackPath:    null,
             Stdout:        false,
             FailOnWarning: false,
             Format:        "text",

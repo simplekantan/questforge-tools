@@ -6,6 +6,7 @@ public sealed record CliArgs(
     string? FixturePath,
     string? QuestDataRoot,
     string? OutputPath,
+    string? SqpackPath,
     bool Stdout,
     bool FailOnWarning,
     string Format,
