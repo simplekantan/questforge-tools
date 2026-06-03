@@ -5,6 +5,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Lumina" Version="7.5.0" />
+    <PackageReference Include="Lumina.Excel" Version="7.4.3" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="..\..\questforge\QuestForge.Adapters\QuestForge.Adapters.csproj" />
     <ProjectReference Include="..\..\questforge\QuestForge.Engine\QuestForge.Engine.csproj" />
   </ItemGroup>

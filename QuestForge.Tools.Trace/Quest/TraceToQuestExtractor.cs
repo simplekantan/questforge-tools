@@ -14,9 +14,15 @@ namespace QuestForge.Tools.Trace.Quest;
 public sealed class TraceToQuestExtractor
 {
     private readonly StepInferenceEngine _inference;
+    private readonly IQuestMetadataResolver _resolver;
 
-    public TraceToQuestExtractor(StepInferenceEngine? inference = null)
-        => _inference = inference ?? new StepInferenceEngine();
+    public TraceToQuestExtractor(
+        StepInferenceEngine? inference = null,
+        IQuestMetadataResolver? resolver = null)
+    {
+        _inference = inference ?? new StepInferenceEngine();
+        _resolver = resolver ?? NullMetadataResolver.Instance;
+    }
 
     /// <summary>
     /// Extract a quest draft from the supplied event list.
@@ -46,7 +52,7 @@ public sealed class TraceToQuestExtractor
             .ToList();
 
         if (stepRecordedEvents.Count > 0)
-            return ExtractFromStepRecordedEvents(runStart, stepRecordedEvents);
+            return ExtractFromStepRecordedEvents(runStart, stepRecordedEvents, _resolver);
 
         // Step 2: initialise SnapshotState
         var snapshot = new SnapshotState(activeQuest);
@@ -551,7 +557,43 @@ public sealed class TraceToQuestExtractor
             Sequences         = sequences.ToArray()
         };
 
+        (definition, todos) = ApplyMetadata(definition, todos, _resolver);
+
         return Result.Ok(new QuestDraftResult(definition, todos));
+    }
+
+    private static (QuestDefinition Def, List<string> Todos) ApplyMetadata(
+        QuestDefinition baseDef,
+        List<string> todos,
+        IQuestMetadataResolver resolver)
+    {
+        var meta = resolver.ResolveQuest(baseDef.Id);
+        if (meta is null)
+            return (baseDef, todos);
+
+        var resolved = baseDef with
+        {
+            Name = meta.Name,
+            Expansion = meta.Expansion,
+            Category = meta.Category,
+            Requirements = new Requirements
+            {
+                MinLevel = meta.MinLevel,
+                RequiredJob = meta.RequiredJob,
+                Prereqs = meta.PrerequisiteQuestIds
+                    .Select(id => new PrerequisiteRef(id, "complete"))
+                    .ToArray(),
+            },
+        };
+
+        var filtered = todos
+            .Where(t => t is not "name (Lumina lookup required)"
+                            and not "expansion"
+                            and not "category"
+                            and not "requirements (level, job, prereqs)")
+            .ToList();
+
+        return (resolved, filtered);
     }
 
     // ────────────────────────────────────────────────────────────────────────
@@ -560,7 +602,8 @@ public sealed class TraceToQuestExtractor
 
     private static Result<QuestDraftResult> ExtractFromStepRecordedEvents(
         RunStartEvent runStart,
-        List<StepRecordedEvent> stepRecordedEvents)
+        List<StepRecordedEvent> stepRecordedEvents,
+        IQuestMetadataResolver resolver)
     {
         // Deserialise each Step from the embedded JSON element using quest file options.
         var workingList = new List<(int GroupKey, Step Step)>();
@@ -641,6 +684,8 @@ public sealed class TraceToQuestExtractor
             AcceptFrom        = acceptFrom,
             Sequences         = sequences.ToArray()
         };
+
+        (definition, todos) = ApplyMetadata(definition, todos, resolver);
 
         return Result.Ok(new QuestDraftResult(definition, todos));
     }
