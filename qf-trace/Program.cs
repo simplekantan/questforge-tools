@@ -6,6 +6,7 @@ using QuestForge.Tools.Trace.Cli;
 using QuestForge.Tools.Trace.Fixture;
 using QuestForge.Tools.Trace.Parsing;
 using QuestForge.Tools.Trace.Quest;
+using QuestForge.Tools.Trace.Redaction;
 using QuestForge.Tools.Trace.Validation;
 
 namespace qf_trace;
@@ -37,9 +38,12 @@ internal static class Program
             return 1;
         }
 
-        // validate subcommand does not need quest-data root; dispatch early
+        // validate and redact subcommands do not need quest-data root; dispatch early
         if (cliArgs.Subcommand == CliSubcommand.ValidateTrace)
             return RunValidateTrace(cliArgs);
+
+        if (cliArgs.Subcommand == CliSubcommand.Redact)
+            return RunRedact(cliArgs);
 
         // Resolve quest-data root
         string? resolvedRoot;
@@ -90,6 +94,38 @@ internal static class Program
         if (result.Errors.Count > 0) return 1;
         if (result.Warnings.Count > 0 && cliArgs.FailOnWarning) return 2;
         return 0;
+    }
+
+    private static int RunRedact(CliArgs cliArgs)
+    {
+        if (cliArgs.TracePath is null)
+        {
+            Console.Error.WriteLine("qf-trace: redact requires <input>");
+            return 1;
+        }
+        if (!File.Exists(cliArgs.TracePath))
+        {
+            Console.Error.WriteLine($"qf-trace: trace file not found: {cliArgs.TracePath}");
+            return 1;
+        }
+
+        var redactor = new TraceRedactor();
+        RedactionReport report;
+
+        if (cliArgs.OutputPath is not null)
+        {
+            using var writer = new StreamWriter(cliArgs.OutputPath, append: false,
+                new System.Text.UTF8Encoding(false)) { NewLine = "\n" };
+            report = redactor.RedactFile(cliArgs.TracePath, writer);
+        }
+        else
+        {
+            Console.Out.NewLine = "\n";
+            report = redactor.RedactFile(cliArgs.TracePath, Console.Out);
+        }
+
+        Console.Error.Write(OutputFormatters.FormatRedactionReport(report));
+        return report.ExcludedFieldHits.Count > 0 ? 2 : 0;
     }
 
     private static int RunExtractFixture(CliArgs cliArgs, string? resolvedRoot)
@@ -251,6 +287,10 @@ internal static class Program
         Console.WriteLine();
         Console.WriteLine("  validate <trace.jsonl> [--fail-on-warning]");
         Console.WriteLine("    Validate structural integrity of a JSONL trace file.");
+        Console.WriteLine();
+        Console.WriteLine("  redact <input> [<output>]");
+        Console.WriteLine("    Strip wallClockUtc and verify no excluded PII fields.");
+        Console.WriteLine("    If <output> is omitted, write to stdout. Report goes to stderr.");
         Console.WriteLine();
         Console.WriteLine("Quest-data root:");
         Console.WriteLine("  --quest-data <dir>          Path to the questforge-data checkout root.");
