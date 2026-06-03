@@ -2,6 +2,7 @@ using System.Text.Json;
 using QuestForge.Adapters.Tracing;
 using QuestForge.Adapters.Types;
 using QuestForge.Schema;
+using QuestForge.Tools.Trace.Analysis;
 using QuestForge.Tools.Trace.Cli;
 using QuestForge.Tools.Trace.Fixture;
 using QuestForge.Tools.Trace.Parsing;
@@ -38,12 +39,15 @@ internal static class Program
             return 1;
         }
 
-        // validate and redact subcommands do not need quest-data root; dispatch early
+        // validate, redact, and state-changes subcommands do not need quest-data root; dispatch early
         if (cliArgs.Subcommand == CliSubcommand.ValidateTrace)
             return RunValidateTrace(cliArgs);
 
         if (cliArgs.Subcommand == CliSubcommand.Redact)
             return RunRedact(cliArgs);
+
+        if (cliArgs.Subcommand == CliSubcommand.StateChanges)
+            return RunStateChanges(cliArgs);
 
         // Resolve quest-data root
         string? resolvedRoot;
@@ -268,6 +272,25 @@ internal static class Program
         return 0;
     }
 
+    private static int RunStateChanges(CliArgs cliArgs)
+    {
+        if (cliArgs.TracePath is null)
+        {
+            Console.Error.WriteLine("qf-trace: state-changes requires <trace.jsonl>");
+            return 1;
+        }
+        if (!File.Exists(cliArgs.TracePath))
+        {
+            Console.Error.WriteLine($"qf-trace: trace file not found: {cliArgs.TracePath}");
+            return 1;
+        }
+
+        var events = TraceEventParser.ReadFile(cliArgs.TracePath, Console.Error);
+        var report = new QuestStateChangeAnalyzer().Analyze(events);
+        Console.Out.WriteLine(OutputFormatters.FormatStateChanges(report));
+        return 0;
+    }
+
     private static void PrintHelp()
     {
         Console.WriteLine("qf-trace <subcommand> [options]");
@@ -291,6 +314,9 @@ internal static class Program
         Console.WriteLine("  redact <input> [<output>]");
         Console.WriteLine("    Strip wallClockUtc and verify no excluded PII fields.");
         Console.WriteLine("    If <output> is omitted, write to stdout. Report goes to stderr.");
+        Console.WriteLine();
+        Console.WriteLine("  state-changes <trace.jsonl>");
+        Console.WriteLine("    Show a timeline of quest state transitions correlated with decisions.");
         Console.WriteLine();
         Console.WriteLine("Quest-data root:");
         Console.WriteLine("  --quest-data <dir>          Path to the questforge-data checkout root.");

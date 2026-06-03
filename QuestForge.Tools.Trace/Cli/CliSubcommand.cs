@@ -11,4 +11,5 @@ public enum CliSubcommand
     ExtractQuest,
     ValidateTrace,
     Redact,
+    StateChanges,
 }
