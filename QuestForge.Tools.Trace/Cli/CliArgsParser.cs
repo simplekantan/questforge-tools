@@ -29,6 +29,7 @@ public static class CliArgsParser
             "list-fixtures"              => CliSubcommand.ListFixtures,
             "extract-quest"              => CliSubcommand.ExtractQuest,
             "validate"                   => CliSubcommand.ValidateTrace,
+            "redact"                     => CliSubcommand.Redact,
             _                            => CliSubcommand.Unknown,
         };
 
@@ -94,18 +95,25 @@ public static class CliArgsParser
             else
             {
                 // Positional argument
-                if (positionalSeen)
+                if (!positionalSeen)
+                {
+                    positionalSeen = true;
+
+                    // Route to the appropriate field depending on subcommand
+                    if (subcommand == CliSubcommand.ValidateFixture)
+                        fixturePath = token;
+                    else
+                        tracePath = token;
+                }
+                else if (subcommand == CliSubcommand.Redact && outputPath is null)
+                {
+                    outputPath = token;
+                }
+                else
                 {
                     parseError = $"unexpected positional argument: {token}";
                     break;
                 }
-                positionalSeen = true;
-
-                // Route to the appropriate field depending on subcommand
-                if (subcommand == CliSubcommand.ValidateFixture)
-                    fixturePath = token;
-                else
-                    tracePath = token;
 
                 i++;
             }

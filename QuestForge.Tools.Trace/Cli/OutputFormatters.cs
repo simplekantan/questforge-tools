@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using QuestForge.Tools.Trace.Fixture;
+using QuestForge.Tools.Trace.Redaction;
 using QuestForge.Tools.Trace.Validation;
 
 namespace QuestForge.Tools.Trace.Cli;
@@ -152,6 +153,30 @@ public static class OutputFormatters
             Gaps: gaps.ToList());
 
         return JsonSerializer.Serialize(model, FixtureModelSerializer.Options);
+    }
+
+    /// <summary>
+    /// Format a RedactionReport for stderr output.
+    /// </summary>
+    public static string FormatRedactionReport(RedactionReport report)
+    {
+        var sb = new StringBuilder();
+        sb.Append($"Redaction complete: {report.TotalLines} lines processed");
+        if (report.WallClockStripped > 0)
+            sb.Append($", {report.WallClockStripped} wallClockUtc stripped");
+        if (report.AlreadyRedacted > 0)
+            sb.Append($", {report.AlreadyRedacted} already redacted");
+        sb.Append(".\n");
+
+        if (report.ExcludedFieldHits.Count > 0)
+        {
+            sb.Append('\n');
+            sb.Append("WARNING: excluded fields found (recording proxy should have prevented these):\n");
+            foreach (var hit in report.ExcludedFieldHits)
+                sb.Append($"  line {hit.LineNumber}: \"{hit.PropertyName}\"\n");
+        }
+
+        return sb.ToString();
     }
 
     // Private models for JSON serialisation
