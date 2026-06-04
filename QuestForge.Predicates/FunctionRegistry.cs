@@ -46,6 +46,8 @@ public static class FunctionRegistry
         new("inventoryHasCoffers",       new Fixed(0),           [],              Bool),
         new("isAetherCurrentAttuned",    new Fixed(1),           [Int],           Bool),
         new("npcExistsNearby",           new Fixed(1),           [Int],           Bool),
+        new("objectExists",              new Fixed(1),           [Int],           Bool),
+        new("objectExistsInRange",       new Fixed(2),           [Int, Int],      Bool),
     ];
 
     public static IReadOnlyDictionary<string, FunctionSignature> All { get; } =
