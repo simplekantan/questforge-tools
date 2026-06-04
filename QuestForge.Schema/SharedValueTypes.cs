@@ -37,7 +37,43 @@ public enum ItemKind
 
 // Schema-side AetheryteId alias. Lives here (not in Adapters) to keep Schema as a leaf
 // with no upward dependency.
+[JsonConverter(typeof(AetheryteIdConverter))]
 public readonly record struct AetheryteId(uint Value);
+
+public sealed class AetheryteIdConverter : JsonConverter<AetheryteId>
+{
+    public override AetheryteId Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
+    {
+        if (reader.TokenType == JsonTokenType.Number)
+            return new AetheryteId(reader.GetUInt32());
+
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            uint value = 0;
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject)
+                    break;
+                if (reader.TokenType == JsonTokenType.PropertyName
+                    && string.Equals(reader.GetString(), "value", StringComparison.OrdinalIgnoreCase))
+                {
+                    reader.Read();
+                    value = reader.GetUInt32();
+                }
+                else if (reader.TokenType == JsonTokenType.PropertyName)
+                {
+                    reader.Read();
+                }
+            }
+            return new AetheryteId(value);
+        }
+
+        throw new JsonException($"Expected a number or object for AetheryteId, got {reader.TokenType}.");
+    }
+
+    public override void Write(Utf8JsonWriter writer, AetheryteId value, JsonSerializerOptions options)
+        => writer.WriteNumberValue(value.Value);
+}
 
 public record Position3(float X, float Y, float Z);
 
