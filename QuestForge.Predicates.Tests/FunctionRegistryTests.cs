@@ -10,16 +10,9 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains39Functions()
+    public void All_Contains41Functions()
     {
-        /*
-         * CONTRACT (RG-N3 / RG-J0 / CJP5 / RGP5 / OC-10 / IO-TT1 / IO-TT2):
-         *   FunctionRegistry.All.Count == 39 after the two nibble entries
-         *   (questVariableLow, questVariableHigh), the three job entries
-         *   (playerJobId, isDiscipleOfWar, isDiscipleOfMagic), isPlayerJob, jobGearsetExists,
-         *   inventoryHasCoffers, isAetherCurrentAttuned, and npcExistsNearby land.
-         */
-        Assert.Equal(39, FunctionRegistry.All.Count);
+        Assert.Equal(41, FunctionRegistry.All.Count);
     }
 
     [Fact]
