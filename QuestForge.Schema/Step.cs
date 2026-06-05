@@ -33,6 +33,7 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(HandOverItemStep),      "hand-over-item")]
 [JsonDerivedType(typeof(WaitStep),              "wait")]
 [JsonDerivedType(typeof(PurchaseItemStep),      "purchase-item")]
+[JsonDerivedType(typeof(TeleportStep),          "teleport")]
 [JsonDerivedType(typeof(RegisterGearsetStep),   "register-gearset")]
 [JsonDerivedType(typeof(OpenCoffersStep),       "open-coffers")]
 public class Step
@@ -58,6 +59,7 @@ public class TravelStep : Step
 {
     public TravelDestination Destination { get; init; } = default!;
     public RouteHint? RouteHint { get; init; }
+    public bool? UseMount { get; init; }
 }
 
 public class TalkStep : Step
@@ -275,6 +277,11 @@ public class PurchaseItemStep : Step
     public int? GcCategory { get; init; }
     /// <summary>GC rank tier row within the selected category (0=lowest, 2=highest); valid range 0..2.</summary>
     public int? GcRankTier { get; init; }
+}
+
+public class TeleportStep : Step
+{
+    public AetheryteId AetheryteId { get; init; }
 }
 
 public sealed class RegisterGearsetStep : Step { }
