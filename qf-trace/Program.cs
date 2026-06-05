@@ -75,8 +75,37 @@ internal static class Program
             CliSubcommand.ValidateFixture => RunValidateFixture(cliArgs, resolvedRoot),
             CliSubcommand.ListFixtures    => RunListFixtures(cliArgs, resolvedRoot),
             CliSubcommand.ExtractQuest    => RunExtractQuest(cliArgs, resolvedRoot),
+            CliSubcommand.Coverage        => RunCoverage(cliArgs, resolvedRoot),
             _                             => 1,
         };
+    }
+
+    private static int RunCoverage(CliArgs cliArgs, string? resolvedRoot)
+    {
+        if (resolvedRoot is null)
+        {
+            Console.Error.WriteLine("qf-trace: coverage requires --quest-data or a resolvable sibling");
+            return 1;
+        }
+
+        var analyzer = new QuestForge.Tools.Trace.Coverage.CoverageAnalyzer();
+        var report = analyzer.Analyze(resolvedRoot);
+
+        var output = cliArgs.Format switch
+        {
+            "json" => QuestForge.Tools.Trace.Cli.OutputFormatters.FormatCoverageJson(report),
+            "markdown" => QuestForge.Tools.Trace.Cli.OutputFormatters.FormatCoverageMarkdown(report),
+            _ => QuestForge.Tools.Trace.Cli.OutputFormatters.FormatCoverageText(report),
+        };
+        Console.Out.Write(output);
+
+        if (cliArgs.MinCoverage is { } min && report.OverallPercentage < min)
+        {
+            Console.Error.WriteLine($"qf-trace: overall coverage {report.OverallPercentage:F1}% is below threshold {min}%");
+            return 1;
+        }
+
+        return 0;
     }
 
     private static int RunValidateTrace(CliArgs cliArgs)
