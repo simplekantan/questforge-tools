@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using QuestForge.Tools.Trace.Analysis;
+using QuestForge.Tools.Trace.Coverage;
 using QuestForge.Tools.Trace.Fixture;
 using QuestForge.Tools.Trace.Redaction;
 using QuestForge.Tools.Trace.Validation;
@@ -215,6 +216,99 @@ public static class OutputFormatters
         return sb.ToString();
     }
 
+    public static string FormatCoverageText(CoverageReport report)
+    {
+        var sb = new StringBuilder();
+
+        AppendTextSection(sb, "Steps", report.Steps);
+        AppendTextSection(sb, "Predicates", report.Predicates);
+        AppendTextSection(sb, "Action Types", report.ActionTypes);
+
+        int totalCovered = report.Steps.Covered + report.Predicates.Covered + report.ActionTypes.Covered;
+        int totalTotal = report.Steps.Total + report.Predicates.Total + report.ActionTypes.Total;
+        double overall = report.OverallPercentage;
+        sb.Append($"Overall: {totalCovered}/{totalTotal} ({overall:F1}%)\n");
+
+        return sb.ToString();
+    }
+
+    private static void AppendTextSection(StringBuilder sb, string label, CoverageSection section)
+    {
+        sb.Append($"{label}: {section.Covered}/{section.Total} ({section.Percentage:F1}%)\n");
+        if (section.UncoveredItems.Count > 0)
+        {
+            sb.Append("  Uncovered:\n");
+            foreach (var item in section.UncoveredItems)
+                sb.Append($"    - {item}\n");
+        }
+    }
+
+    public static string FormatCoverageJson(CoverageReport report)
+    {
+        int totalCovered = report.Steps.Covered + report.Predicates.Covered + report.ActionTypes.Covered;
+        int totalTotal = report.Steps.Total + report.Predicates.Total + report.ActionTypes.Total;
+        double overallPct = report.OverallPercentage;
+
+        var model = new CoverageJsonModel(
+            Steps: new CoverageSectionJson(
+                report.Steps.Covered, report.Steps.Total, report.Steps.Percentage,
+                report.Steps.CoveredItems.ToList(), report.Steps.UncoveredItems.ToList()),
+            Predicates: new CoverageSectionJson(
+                report.Predicates.Covered, report.Predicates.Total, report.Predicates.Percentage,
+                report.Predicates.CoveredItems.ToList(), report.Predicates.UncoveredItems.ToList()),
+            ActionTypes: new CoverageSectionJson(
+                report.ActionTypes.Covered, report.ActionTypes.Total, report.ActionTypes.Percentage,
+                report.ActionTypes.CoveredItems.ToList(), report.ActionTypes.UncoveredItems.ToList()),
+            Overall: new CoverageOverallJson(totalCovered, totalTotal, overallPct));
+
+        var options = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            WriteIndented = true,
+        };
+        return JsonSerializer.Serialize(model, options);
+    }
+
+    public static string FormatCoverageMarkdown(CoverageReport report)
+    {
+        var sb = new StringBuilder();
+
+        sb.Append("## Fixture Coverage Report\n\n");
+        sb.Append("| Category | Covered | Total | Percentage |\n");
+        sb.Append("|---|---|---|---|\n");
+
+        int totalCovered = report.Steps.Covered + report.Predicates.Covered + report.ActionTypes.Covered;
+        int totalTotal = report.Steps.Total + report.Predicates.Total + report.ActionTypes.Total;
+
+        sb.Append($"| Steps | {report.Steps.Covered} | {report.Steps.Total} | {report.Steps.Percentage:F1}% |\n");
+        sb.Append($"| Predicates | {report.Predicates.Covered} | {report.Predicates.Total} | {report.Predicates.Percentage:F1}% |\n");
+        sb.Append($"| Action Types | {report.ActionTypes.Covered} | {report.ActionTypes.Total} | {report.ActionTypes.Percentage:F1}% |\n");
+        sb.Append($"| **Overall** | **{totalCovered}** | **{totalTotal}** | **{report.OverallPercentage:F1}%** |\n");
+
+        if (report.Steps.UncoveredItems.Count > 0)
+        {
+            sb.Append("\n### Uncovered Steps\n");
+            foreach (var item in report.Steps.UncoveredItems)
+                sb.Append($"- `{item}`\n");
+        }
+
+        if (report.Predicates.UncoveredItems.Count > 0)
+        {
+            sb.Append("\n### Uncovered Predicates\n");
+            foreach (var item in report.Predicates.UncoveredItems)
+                sb.Append($"- `{item}`\n");
+        }
+
+        if (report.ActionTypes.UncoveredItems.Count > 0)
+        {
+            sb.Append("\n### Uncovered Action Types\n");
+            foreach (var item in report.ActionTypes.UncoveredItems)
+                sb.Append($"- `{item}`\n");
+        }
+
+        return sb.ToString();
+    }
+
     // Private models for JSON serialisation
     private sealed record FixtureListJsonModel(
         List<FixtureListJsonEntry> Fixtures,
@@ -225,4 +319,22 @@ public static class OutputFormatters
         List<string> Capabilities,
         string? QuestFile,
         bool QuestFileExists);
+
+    private sealed record CoverageJsonModel(
+        CoverageSectionJson Steps,
+        CoverageSectionJson Predicates,
+        CoverageSectionJson ActionTypes,
+        CoverageOverallJson Overall);
+
+    private sealed record CoverageSectionJson(
+        int Covered,
+        int Total,
+        double Percentage,
+        List<string> CoveredItems,
+        List<string> Uncovered);
+
+    private sealed record CoverageOverallJson(
+        int Covered,
+        int Total,
+        double Percentage);
 }

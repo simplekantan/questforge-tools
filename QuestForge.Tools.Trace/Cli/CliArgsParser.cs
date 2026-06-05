@@ -5,7 +5,7 @@ public static class CliArgsParser
     // Value-consuming flags (require a following token)
     private static readonly HashSet<string> ValueFlags = new(StringComparer.Ordinal)
     {
-        "--quest-data", "--out", "--format", "--sqpack",
+        "--quest-data", "--out", "--format", "--sqpack", "--min",
     };
 
     // Boolean flags (no following token)
@@ -31,6 +31,7 @@ public static class CliArgsParser
             "validate"                   => CliSubcommand.ValidateTrace,
             "redact"                     => CliSubcommand.Redact,
             "state-changes"              => CliSubcommand.StateChanges,
+            "coverage"                   => CliSubcommand.Coverage,
             _                            => CliSubcommand.Unknown,
         };
 
@@ -52,6 +53,7 @@ public static class CliArgsParser
         string? parseError     = null;
         bool    positionalSeen = false;
         bool    withTrace      = true; // default ON for extract-fixture
+        int?    minCoverage    = null;
 
         int i = 1;
         while (i < args.Length)
@@ -75,6 +77,16 @@ public static class CliArgsParser
                         case "--out":        outputPath    = value; break;
                         case "--format":     format        = value; break;
                         case "--sqpack":     sqpackPath    = value; break;
+                        case "--min":
+                            if (!int.TryParse(value, out var minVal))
+                            {
+                                parseError = $"--min requires an integer value, got: {value}";
+                            }
+                            else
+                            {
+                                minCoverage = minVal;
+                            }
+                            break;
                     }
                     i += 2;
                 }
@@ -134,7 +146,8 @@ public static class CliArgsParser
             Format:        format,
             UnknownToken:  null,
             ParseError:    parseError,
-            WithTrace:     withTrace);
+            WithTrace:     withTrace,
+            MinCoverage:   minCoverage);
     }
 
     private static CliArgs Default(CliSubcommand subcommand) =>
