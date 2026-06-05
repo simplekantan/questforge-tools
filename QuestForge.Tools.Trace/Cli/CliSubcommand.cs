@@ -12,4 +12,5 @@ public enum CliSubcommand
     ValidateTrace,
     Redact,
     StateChanges,
+    Coverage,
 }

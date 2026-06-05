@@ -12,4 +12,5 @@ public sealed record CliArgs(
     string Format,
     string? UnknownToken,
     string? ParseError,
-    bool WithTrace = true);
+    bool WithTrace = true,
+    int? MinCoverage = null);

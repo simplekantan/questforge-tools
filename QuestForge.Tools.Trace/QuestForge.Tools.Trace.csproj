@@ -11,5 +11,9 @@
   <ItemGroup>
     <ProjectReference Include="..\..\questforge\QuestForge.Adapters\QuestForge.Adapters.csproj" />
     <ProjectReference Include="..\..\questforge\QuestForge.Engine\QuestForge.Engine.csproj" />
+    <ProjectReference Include="..\QuestForge.Predicates\QuestForge.Predicates.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="QuestForge.Tools.Trace.Tests" />
   </ItemGroup>
 </Project>
