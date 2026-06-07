@@ -10,9 +10,9 @@ public class FunctionRegistryTests
     // =========================================================================
 
     [Fact]
-    public void All_Contains41Functions()
+    public void All_Contains42Functions()
     {
-        Assert.Equal(41, FunctionRegistry.All.Count);
+        Assert.Equal(42, FunctionRegistry.All.Count);
     }
 
     [Fact]
@@ -390,5 +390,45 @@ public class FunctionRegistryTests
         Assert.Single(sig.ParameterTypes);
         Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
         Assert.Equal(PredicateType.Bool, sig.ReturnType);
+    }
+
+    // =========================================================================
+    // isSlotEquipped registry tests (S1, S3 from IS_SLOT_EQUIPPED_PREDICATE_PLAN.md)
+    // =========================================================================
+
+    [Fact]
+    public void IsSlotEquipped_Signature_IsCorrect_S1()
+    {
+        /*
+         * CONTRACT (S1): Given FunctionRegistry.TryGet("isSlotEquipped", out var sig),
+         *                Then found == true,
+         *                     sig.Name == "isSlotEquipped",
+         *                     sig.Arity is Fixed(1),
+         *                     sig.ParameterTypes == [Int],
+         *                     sig.ReturnType == Bool.
+         */
+        var found = FunctionRegistry.TryGet("isSlotEquipped", out var sig);
+
+        Assert.True(found, "isSlotEquipped should be registered in FunctionRegistry");
+        Assert.Equal("isSlotEquipped", sig.Name);
+        var fixed1 = Assert.IsType<Arity.Fixed>(sig.Arity);
+        Assert.Equal(1, fixed1.Count);
+        Assert.Single(sig.ParameterTypes);
+        Assert.Equal(PredicateType.Int, sig.ParameterTypes[0]);
+        Assert.Equal(PredicateType.Bool, sig.ReturnType);
+    }
+
+    [Fact]
+    public void IsSlotEquipped_SuggestSimilar_SuggestsForTypo_S3()
+    {
+        /*
+         * CONTRACT (S3): Given the typo "isSlotEquiped" (single 'p'),
+         *                When FunctionRegistry.SuggestSimilar("isSlotEquiped"),
+         *                Then the result contains "isSlotEquipped".
+         *                Levenshtein("isSlotEquiped", "isSlotEquipped") == 1 <= maxDistance 2.
+         */
+        var suggestions = FunctionRegistry.SuggestSimilar("isSlotEquiped");
+
+        Assert.Contains("isSlotEquipped", suggestions);
     }
 }
