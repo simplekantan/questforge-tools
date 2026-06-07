@@ -281,6 +281,9 @@ public class PurchaseItemStep : Step
     public int? GcCategory { get; init; }
     /// <summary>GC rank tier row within the selected category (0=lowest, 2=highest); valid range 0..2.</summary>
     public int? GcRankTier { get; init; }
+    /// <summary>SelectIconString category menu index (0-based) to select before Shop opens. Null = no category menu.</summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? VendorCategory { get; init; }
 }
 
 public class TeleportStep : Step
