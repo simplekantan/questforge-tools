@@ -472,6 +472,14 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                         errors.Add(E(ctx, "structural/purchase-gc-fields-on-gil", scope.ToString(),
                             $"Step '{purchase.Id}': 'gcCategory'/'gcRankTier' are ignored when 'currency' is not 'gcSeals'; remove them or set 'currency: gcSeals'.",
                             stepId: purchase.Id, severity: Severity.Warning));
+                    if (purchase.VendorCategory.HasValue && purchase.VendorCategory.Value < 0)
+                        errors.Add(E(ctx, "structural/purchase-vendor-category-negative", scope.ToString(),
+                            $"Step '{purchase.Id}': 'vendorCategory' must be >= 0 (zero-based index); got {purchase.VendorCategory.Value}.",
+                            stepId: purchase.Id));
+                    if (purchase.VendorCategory.HasValue && (purchase.GcCategory.HasValue || purchase.GcRankTier.HasValue))
+                        errors.Add(E(ctx, "structural/purchase-vendor-category-with-gc-fields", scope.ToString(),
+                            $"Step '{purchase.Id}': 'vendorCategory' (SelectIconString vendor) and 'gcCategory'/'gcRankTier' (GC Exchange) are mutually exclusive.",
+                            stepId: purchase.Id));
                     break;
 
                 case WaitStep wait:
