@@ -97,6 +97,9 @@ public sealed class TraceToFixtureExtractor
         var runId = runStart.RunId;
         var questId = runStart.Data.QuestId;
 
+        // Step 1b: extract initial state from observations before first decision
+        var initialOverrides = ExtractInitialOverrides(events, runId);
+
         // Step 2-4: build transitions from DecisionEvents
         var transitions = new List<TransitionEntry>();
         TransitionEntry? lastAppended = null;
@@ -167,7 +170,8 @@ public sealed class TraceToFixtureExtractor
             Capabilities: capabilities,
             QuestFile: questFile,
             ExpectedTransitions: transitions,
-            TerminalOutcome: terminalOutcome);
+            TerminalOutcome: terminalOutcome,
+            InitialOverrides: initialOverrides);
 
         return Result.Ok(fixture);
     }
@@ -216,6 +220,48 @@ public sealed class TraceToFixtureExtractor
 
         var runId = runStart.RunId;
         return events.Where(e => GetRunId(e) == runId).ToList();
+    }
+
+    private static InitialOverrides? ExtractInitialOverrides(
+        IReadOnlyList<TraceEvent> events, string runId)
+    {
+        int? zone = null;
+        float? posX = null, posY = null, posZ = null;
+        int? questSequence = null;
+
+        foreach (var ev in events)
+        {
+            if (ev is DecisionEvent) break; // only look at observations before first decision
+
+            if (ev is not ObservationEvent obs) continue;
+            if (obs.RunId != runId) continue;
+            if (obs.Data.Value is not { } val) continue;
+
+            switch (obs.Data.Method)
+            {
+                case "GetPlayerZone" when val.TryGetProperty("value", out var zv) && zv.TryGetInt32(out var z):
+                    zone = z;
+                    break;
+                case "GetPlayerPosition":
+                    if (val.TryGetProperty("x", out var px)) posX = px.GetSingle();
+                    if (val.TryGetProperty("y", out var py)) posY = py.GetSingle();
+                    if (val.TryGetProperty("z", out var pz)) posZ = pz.GetSingle();
+                    break;
+                case "GetQuestSequence" when val.TryGetInt32(out var seq):
+                    questSequence = seq;
+                    break;
+            }
+        }
+
+        if (zone is null && posX is null && questSequence is null)
+            return null;
+
+        return new InitialOverrides(
+            Zone: zone,
+            PositionX: posX,
+            PositionY: posY,
+            PositionZ: posZ,
+            QuestSequence: questSequence);
     }
 
     private static string? GetRunId(TraceEvent e) => e switch
