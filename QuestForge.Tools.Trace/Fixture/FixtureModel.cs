@@ -28,4 +28,7 @@ public sealed record InitialOverrides(
     float? PositionX = null,
     float? PositionY = null,
     float? PositionZ = null,
-    int? QuestSequence = null);
+    int? QuestSequence = null,
+    int[]? SlotsEquipped = null,
+    Dictionary<string, int>? Items = null,
+    int? Job = null);
