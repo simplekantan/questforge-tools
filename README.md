@@ -13,11 +13,13 @@ Schema validator and CLI tools for [QuestForge](https://github.com/simplekantan/
 | Project | Purpose |
 |---------|---------|
 | `QuestForge.Schema` | C# types for the quest schema — step types, predicates, fragments. Source-generated `System.Text.Json` serialization. |
+| `QuestForge.Predicates` | Predicate language parser and function registry (42 functions). Used by the validator for predicate syntax checking. |
+| `QuestForge.Predicates.Tests` | xUnit test suite (226 tests). |
 | `QuestForge.Tools.Validator` | Structural validator: 20+ rules covering required fields, step IDs, recovery gotos, branch nesting, fragment references, step-type constraints, and more. |
-| `QuestForge.Tools.Validator.Tests` | xUnit test suite (148 tests). Runs without a game instance. |
+| `QuestForge.Tools.Validator.Tests` | xUnit test suite (218 tests). Runs without a game instance. |
 | `qf-validate` | CLI entry point. Discovers `quests/**/*.json` and `fragments/**/*.json`, validates each file, and reports errors in text or JSON format. |
 | `QuestForge.Tools.Trace` | Trace reader + fixture/quest extractor library. Reads `.jsonl` trace files. |
-| `QuestForge.Tools.Trace.Tests` | xUnit test suite (107 tests). |
+| `QuestForge.Tools.Trace.Tests` | xUnit test suite (308 tests). |
 | `qf-trace` | CLI entry point for trace extraction. |
 
 ---
