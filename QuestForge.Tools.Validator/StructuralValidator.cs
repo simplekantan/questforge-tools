@@ -489,6 +489,17 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                             stepId: wait.Id, severity: Severity.Warning));
                     break;
 
+                case AethernetStep aethernet:
+                    if (aethernet.From == 0)
+                        errors.Add(E(ctx, "structural/aethernet-from-zero", scope.ToString(),
+                            $"Step '{aethernet.Id}': 'from' is 0; a valid aethernet shard id is required.",
+                            stepId: aethernet.Id));
+                    if (aethernet.To == 0)
+                        errors.Add(E(ctx, "structural/aethernet-to-zero", scope.ToString(),
+                            $"Step '{aethernet.Id}': 'to' is 0; a valid aethernet shard id is required.",
+                            stepId: aethernet.Id));
+                    break;
+
                 case BranchStep branch:
                     for (var i = 0; i < branch.Branches.Length; i++)
                     {

@@ -931,4 +931,49 @@ public sealed class CapabilityInferrerTests
 
         Assert.Contains("step:teleport", caps);
     }
+
+    // =========================================================================
+    // AethernetStep capability inference (tools catch-up)
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithAethernetStep_EmitsStepAethernet()
+    {
+        // CONTRACT: Given a QuestDefinition with one AethernetStep,
+        //           When CapabilityInferrer.Infer(quest),
+        //           Then the result contains "step:aethernet".
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 99300u,
+            Name              = "Aethernet Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new AethernetStep
+                        {
+                            Id           = "aethernet-to-market",
+                            From         = 10u,
+                            To           = 20u,
+                            FromPosition = new Position3(0f, 0f, 0f)
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:aethernet", caps);
+    }
 }
