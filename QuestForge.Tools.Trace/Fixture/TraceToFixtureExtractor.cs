@@ -43,6 +43,7 @@ public sealed class TraceToFixtureExtractor
         (["step:register-gearset", "step:talk", "step:travel"], "with-register-gearset.json"),
         (["step:open-coffers", "step:talk", "step:travel"], "with-open-coffers.json"),
         (["step:dungeon-trial"], "with-dungeon-trial.json"),
+        (["step:aethernet", "step:travel"], "with-aethernet.json"),
     ];
 
     // Priority-ordered list of distinguishing capabilities for the multi-shape fallback (§3.7).
@@ -50,6 +51,7 @@ public sealed class TraceToFixtureExtractor
     // the suggested filename.
     private static readonly (string Cap, string Filename)[] DistinguishingCapPriority =
     [
+        ("step:aethernet",      "with-aethernet.json"),
         ("step:dungeon-trial",  "with-dungeon-trial.json"),
         ("step:duty",           "with-dungeon.json"),
         ("step:spd",            "with-spd.json"),

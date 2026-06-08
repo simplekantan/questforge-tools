@@ -34,6 +34,7 @@ namespace QuestForge.Schema;
 [JsonSerializable(typeof(TeleportStep))]
 [JsonSerializable(typeof(RegisterGearsetStep))]
 [JsonSerializable(typeof(OpenCoffersStep))]
+[JsonSerializable(typeof(AethernetStep))]
 [JsonSerializable(typeof(PurchaseCurrency))]
 [JsonSerializable(typeof(CombatSpawn))]
 [JsonSerializable(typeof(ItemKind))]

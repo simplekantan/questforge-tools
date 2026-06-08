@@ -33,6 +33,7 @@ public static class CapabilityInferrer
         [typeof(FragmentStep)]            = "step:fragment",
         [typeof(InteractObjectStep)]      = "step:interact-object",
         [typeof(PickupItemStep)]          = "step:pickup-item",
+        [typeof(AethernetStep)]           = "step:aethernet",
         [typeof(AttunementStep)]          = "step:attune",
         [typeof(HandOverItemStep)]        = "step:hand-over-item",
         [typeof(PurchaseItemStep)]        = "step:purchase-item",
