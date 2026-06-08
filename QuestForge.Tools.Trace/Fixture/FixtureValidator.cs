@@ -99,6 +99,26 @@ public sealed class FixtureValidator
             .Where(id => !string.IsNullOrEmpty(id))
             .ToHashSet();
 
+        // Also include step IDs from fragments (resume-point and inline fragment steps
+        // produce transitions with step IDs from the fragment, not the quest).
+        var fragmentsDir = Path.Combine(_questDataRoot, "fragments");
+        if (Directory.Exists(fragmentsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(fragmentsDir, "*.json", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var fragJson = File.ReadAllText(file);
+                    var frag = JsonSerializer.Deserialize<FragmentDefinition>(fragJson, QuestForgeJsonContext.QuestFileOptions);
+                    if (frag?.Steps is { } fragSteps)
+                        foreach (var step in fragSteps)
+                            if (!string.IsNullOrEmpty(step.Id))
+                                validStepIds.Add(step.Id);
+                }
+                catch { }
+            }
+        }
+
         // Check step IDs in transitions
         foreach (var transition in fixture.ExpectedTransitions)
         {
