@@ -76,6 +76,8 @@ internal static class Program
             CliSubcommand.ListFixtures    => RunListFixtures(cliArgs, resolvedRoot),
             CliSubcommand.ExtractQuest    => RunExtractQuest(cliArgs, resolvedRoot),
             CliSubcommand.Coverage        => RunCoverage(cliArgs, resolvedRoot),
+            CliSubcommand.GenerateQuestList => RunGenerateQuestList(cliArgs),
+            CliSubcommand.QuestCoverage   => RunQuestCoverage(cliArgs, resolvedRoot),
             _                             => 1,
         };
     }
@@ -107,6 +109,156 @@ internal static class Program
 
         return 0;
     }
+
+    private static int RunGenerateQuestList(CliArgs cliArgs)
+    {
+        var sqpackPath = cliArgs.SqpackPath ?? QuestForge.Tools.Trace.Cli.SqpackPathResolver.Resolve();
+        if (sqpackPath is null || !Directory.Exists(sqpackPath))
+        {
+            Console.Error.WriteLine("qf-trace: generate-quest-list requires --sqpack or auto-detected game install");
+            return 1;
+        }
+
+        Console.Error.WriteLine($"qf-trace: reading quest data from {sqpackPath}");
+        var entries = QuestForge.Tools.Trace.Coverage.QuestListGenerator.Generate(sqpackPath);
+        Console.Error.WriteLine($"qf-trace: found {entries.Count} quests");
+
+        var json = System.Text.Json.JsonSerializer.Serialize(entries, new System.Text.Json.JsonSerializerOptions
+        {
+            WriteIndented = true,
+            PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase
+        });
+
+        if (cliArgs.OutputPath is { } outPath)
+        {
+            File.WriteAllText(outPath, json);
+            Console.Out.WriteLine($"Written to {outPath}");
+        }
+        else
+        {
+            Console.Out.Write(json);
+        }
+
+        return 0;
+    }
+
+    private static int RunQuestCoverage(CliArgs cliArgs, string? resolvedRoot)
+    {
+        if (resolvedRoot is null)
+        {
+            Console.Error.WriteLine("qf-trace: quest-coverage requires --quest-data");
+            return 1;
+        }
+
+        var questListPath = Path.Combine(resolvedRoot, "quest-list.json");
+        if (!File.Exists(questListPath))
+        {
+            Console.Error.WriteLine($"qf-trace: quest-list.json not found at {questListPath}");
+            Console.Error.WriteLine("Run: qf-trace generate-quest-list --out <data-repo>/quest-list.json");
+            return 1;
+        }
+
+        var questListJson = File.ReadAllText(questListPath);
+        var allQuests = System.Text.Json.JsonSerializer.Deserialize<List<QuestForge.Tools.Trace.Coverage.QuestListEntry>>(
+            questListJson, new System.Text.Json.JsonSerializerOptions { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase })
+            ?? [];
+
+        var questsDir = Path.Combine(resolvedRoot, "quests");
+        var coveredIds = new HashSet<uint>();
+        if (Directory.Exists(questsDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(questsDir, "*.json", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var json = File.ReadAllText(file);
+                    var quest = System.Text.Json.JsonSerializer.Deserialize<QuestForge.Schema.QuestDefinition>(
+                        json, QuestForge.Schema.QuestForgeJsonContext.QuestFileOptions);
+                    if (quest is not null && quest.Id != 0)
+                        coveredIds.Add(quest.Id);
+                }
+                catch { }
+            }
+        }
+
+        var groups = allQuests
+            .Where(q => q.Category is "msq" or "class" or "role")
+            .GroupBy(q => (q.Expansion, q.Category))
+            .OrderBy(g => ExpansionOrder(g.Key.Expansion))
+            .ThenBy(g => g.Key.Category);
+
+        Console.Out.WriteLine("Quest Coverage Report");
+        Console.Out.WriteLine("=====================");
+        Console.Out.WriteLine();
+
+        var totalAll = 0;
+        var coveredAll = 0;
+
+        string? lastExpansion = null;
+        foreach (var group in groups)
+        {
+            if (lastExpansion != group.Key.Expansion)
+            {
+                if (lastExpansion is not null) Console.Out.WriteLine();
+                Console.Out.WriteLine($"  {group.Key.Expansion.ToUpperInvariant()}");
+                lastExpansion = group.Key.Expansion;
+            }
+
+            var total = group.Count();
+            var covered = group.Count(q => coveredIds.Contains(q.Id));
+            var pct = total > 0 ? (double)covered / total * 100 : 0;
+            Console.Out.WriteLine($"    {group.Key.Category,-10} {covered,4} / {total,-4}  ({pct,5:F1}%)");
+
+            totalAll += total;
+            coveredAll += covered;
+        }
+
+        Console.Out.WriteLine();
+        var overallPct = totalAll > 0 ? (double)coveredAll / totalAll * 100 : 0;
+        Console.Out.WriteLine($"  Overall:    {coveredAll,4} / {totalAll,-4}  ({overallPct,5:F1}%)");
+
+        if (cliArgs.MarkdownPath is { } mdPath)
+        {
+            var md = new System.Text.StringBuilder();
+            md.AppendLine("# Quest Coverage Report");
+            md.AppendLine();
+            md.AppendLine("| Expansion | Category | Covered | Total | % |");
+            md.AppendLine("|-----------|----------|---------|-------|---|");
+            foreach (var group in groups)
+            {
+                var total = group.Count();
+                var covered = group.Count(q => coveredIds.Contains(q.Id));
+                var pct = total > 0 ? (double)covered / total * 100 : 0;
+                md.AppendLine($"| {group.Key.Expansion} | {group.Key.Category} | {covered} | {total} | {pct:F1}% |");
+            }
+            md.AppendLine();
+            md.AppendLine($"**Overall: {coveredAll} / {totalAll} ({overallPct:F1}%)**");
+            File.WriteAllText(mdPath, md.ToString());
+            Console.Error.WriteLine($"Written to {mdPath}");
+        }
+
+        if (cliArgs.BadgePath is { } bjPath)
+        {
+            var badgeJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                label = "quest coverage",
+                message = $"{coveredAll}/{totalAll} ({overallPct:F1}%)",
+                color = "blue"
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(bjPath, badgeJson);
+            Console.Error.WriteLine($"Written to {bjPath}");
+        }
+
+        return 0;
+    }
+
+    private static int ExpansionOrder(string expansion) => expansion switch
+    {
+        "arr" => 0, "heavensward" => 1, "stormblood" => 2,
+        "shadowbringers" => 3, "endwalker" => 4, "dawntrail" => 5,
+        _ => 99
+    };
 
     private static int RunValidateTrace(CliArgs cliArgs)
     {
