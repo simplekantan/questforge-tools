@@ -217,6 +217,39 @@ internal static class Program
         var overallPct = totalAll > 0 ? (double)coveredAll / totalAll * 100 : 0;
         Console.Out.WriteLine($"  Overall:    {coveredAll,4} / {totalAll,-4}  ({overallPct,5:F1}%)");
 
+        if (cliArgs.MarkdownPath is { } mdPath)
+        {
+            var md = new System.Text.StringBuilder();
+            md.AppendLine("# Quest Coverage Report");
+            md.AppendLine();
+            md.AppendLine("| Expansion | Category | Covered | Total | % |");
+            md.AppendLine("|-----------|----------|---------|-------|---|");
+            foreach (var group in groups)
+            {
+                var total = group.Count();
+                var covered = group.Count(q => coveredIds.Contains(q.Id));
+                var pct = total > 0 ? (double)covered / total * 100 : 0;
+                md.AppendLine($"| {group.Key.Expansion} | {group.Key.Category} | {covered} | {total} | {pct:F1}% |");
+            }
+            md.AppendLine();
+            md.AppendLine($"**Overall: {coveredAll} / {totalAll} ({overallPct:F1}%)**");
+            File.WriteAllText(mdPath, md.ToString());
+            Console.Error.WriteLine($"Written to {mdPath}");
+        }
+
+        if (cliArgs.BadgePath is { } bjPath)
+        {
+            var badgeJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                schemaVersion = 1,
+                label = "quest coverage",
+                message = $"{coveredAll}/{totalAll} ({overallPct:F1}%)",
+                color = "blue"
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            File.WriteAllText(bjPath, badgeJson);
+            Console.Error.WriteLine($"Written to {bjPath}");
+        }
+
         return 0;
     }
 

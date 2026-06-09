@@ -13,4 +13,6 @@ public sealed record CliArgs(
     string? UnknownToken,
     string? ParseError,
     bool WithTrace = true,
-    int? MinCoverage = null);
+    int? MinCoverage = null,
+    string? MarkdownPath = null,
+    string? BadgePath = null);
