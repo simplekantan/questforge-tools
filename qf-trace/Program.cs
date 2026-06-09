@@ -239,19 +239,68 @@ internal static class Program
 
         if (cliArgs.BadgePath is { } bjPath)
         {
-            var badgeJson = System.Text.Json.JsonSerializer.Serialize(new
-            {
-                schemaVersion = 1,
-                label = "quest coverage",
-                message = $"{coveredAll}/{totalAll} ({overallPct:F1}%)",
-                color = "blue"
-            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+            var badgeJson = SerializeBadge("quest coverage", coveredAll, totalAll, overallPct);
             File.WriteAllText(bjPath, badgeJson);
             Console.Error.WriteLine($"Written to {bjPath}");
         }
 
+        if (cliArgs.BadgeDirPath is { } badgeDir)
+        {
+            Directory.CreateDirectory(badgeDir);
+
+            File.WriteAllText(
+                Path.Combine(badgeDir, "overall.json"),
+                SerializeBadge("quest coverage", coveredAll, totalAll, overallPct));
+
+            foreach (var group in groups)
+            {
+                var total = group.Count();
+                var covered = group.Count(q => coveredIds.Contains(q.Id));
+                var pct = total > 0 ? (double)covered / total * 100 : 0;
+                var label = $"{FormatExpansionLabel(group.Key.Expansion)} {group.Key.Category}";
+                var fileName = $"{group.Key.Expansion}-{group.Key.Category}.json";
+                File.WriteAllText(
+                    Path.Combine(badgeDir, fileName),
+                    SerializeBadge(label, covered, total, pct));
+            }
+
+            Console.Error.WriteLine($"Badge files written to {badgeDir}/");
+        }
+
         return 0;
     }
+
+    private static string SerializeBadge(string label, int covered, int total, double pct)
+    {
+        return System.Text.Json.JsonSerializer.Serialize(new
+        {
+            schemaVersion = 1,
+            label,
+            message = $"{covered}/{total} ({pct:F1}%)",
+            color = BadgeColor(pct)
+        }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    }
+
+    private static string BadgeColor(double pct) => pct switch
+    {
+        0 => "lightgrey",
+        < 25 => "red",
+        < 50 => "orange",
+        < 75 => "yellow",
+        < 100 => "green",
+        _ => "brightgreen"
+    };
+
+    private static string FormatExpansionLabel(string expansion) => expansion switch
+    {
+        "arr" => "ARR",
+        "heavensward" => "HW",
+        "stormblood" => "SB",
+        "shadowbringers" => "ShB",
+        "endwalker" => "EW",
+        "dawntrail" => "DT",
+        _ => expansion.ToUpperInvariant()
+    };
 
     private static int ExpansionOrder(string expansion) => expansion switch
     {
