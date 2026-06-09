@@ -32,6 +32,8 @@ public static class CliArgsParser
             "redact"                     => CliSubcommand.Redact,
             "state-changes"              => CliSubcommand.StateChanges,
             "coverage"                   => CliSubcommand.Coverage,
+            "generate-quest-list"        => CliSubcommand.GenerateQuestList,
+            "quest-coverage"             => CliSubcommand.QuestCoverage,
             _                            => CliSubcommand.Unknown,
         };
 

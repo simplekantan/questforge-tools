@@ -13,4 +13,6 @@ public enum CliSubcommand
     Redact,
     StateChanges,
     Coverage,
+    GenerateQuestList,
+    QuestCoverage,
 }
