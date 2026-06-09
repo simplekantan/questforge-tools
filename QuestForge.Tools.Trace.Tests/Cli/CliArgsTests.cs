@@ -248,6 +248,39 @@ public class CliArgsTests
     }
 
     // ---------------------------------------------------------------------------
+    // T-13: --badge-dir flag
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void ParseArgs_QuestCoverage_BadgeDir()
+    {
+        string[] args = ["quest-coverage", "--quest-data", "./qd", "--badge-dir", "badges"];
+
+        CliArgs result = CliArgsParser.Parse(args);
+
+        Assert.Equal(CliSubcommand.QuestCoverage, result.Subcommand);
+        Assert.Equal("./qd", result.QuestDataRoot);
+        Assert.Equal("badges", result.BadgeDirPath);
+        Assert.Null(result.ParseError);
+    }
+
+    // ---------------------------------------------------------------------------
+    // T-14: --badge and --badge-dir together
+    // ---------------------------------------------------------------------------
+
+    [Fact]
+    public void ParseArgs_QuestCoverage_BadgeAndBadgeDir()
+    {
+        string[] args = ["quest-coverage", "--quest-data", "./qd", "--badge", "overall.json", "--badge-dir", "badges"];
+
+        CliArgs result = CliArgsParser.Parse(args);
+
+        Assert.Equal("overall.json", result.BadgePath);
+        Assert.Equal("badges", result.BadgeDirPath);
+        Assert.Null(result.ParseError);
+    }
+
+    // ---------------------------------------------------------------------------
     // T-12 (edge): unknown flag
     // ---------------------------------------------------------------------------
 

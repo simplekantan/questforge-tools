@@ -5,7 +5,7 @@ public static class CliArgsParser
     // Value-consuming flags (require a following token)
     private static readonly HashSet<string> ValueFlags = new(StringComparer.Ordinal)
     {
-        "--quest-data", "--out", "--format", "--sqpack", "--min", "--markdown", "--badge",
+        "--quest-data", "--out", "--format", "--sqpack", "--min", "--markdown", "--badge", "--badge-dir",
     };
 
     // Boolean flags (no following token)
@@ -58,6 +58,7 @@ public static class CliArgsParser
         int?    minCoverage    = null;
         string? markdownPath   = null;
         string? badgePath      = null;
+        string? badgeDirPath   = null;
 
         int i = 1;
         while (i < args.Length)
@@ -83,6 +84,7 @@ public static class CliArgsParser
                         case "--sqpack":     sqpackPath    = value; break;
                         case "--markdown":   markdownPath  = value; break;
                         case "--badge":      badgePath     = value; break;
+                        case "--badge-dir":  badgeDirPath  = value; break;
                         case "--min":
                             if (!int.TryParse(value, out var minVal))
                             {
@@ -155,7 +157,8 @@ public static class CliArgsParser
             WithTrace:     withTrace,
             MinCoverage:   minCoverage,
             MarkdownPath:  markdownPath,
-            BadgePath:     badgePath);
+            BadgePath:     badgePath,
+            BadgeDirPath:  badgeDirPath);
     }
 
     private static CliArgs Default(CliSubcommand subcommand) =>

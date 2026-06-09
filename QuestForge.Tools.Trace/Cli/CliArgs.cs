@@ -15,4 +15,5 @@ public sealed record CliArgs(
     bool WithTrace = true,
     int? MinCoverage = null,
     string? MarkdownPath = null,
-    string? BadgePath = null);
+    string? BadgePath = null,
+    string? BadgeDirPath = null);
