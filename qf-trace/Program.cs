@@ -101,6 +101,15 @@ internal static class Program
         };
         Console.Out.Write(output);
 
+        if (cliArgs.BadgePath is { } bjPath)
+        {
+            int totalCovered = report.Steps.Covered + report.Predicates.Covered + report.ActionTypes.Covered;
+            int totalTotal = report.Steps.Total + report.Predicates.Total + report.ActionTypes.Total;
+            var badgeJson = SerializeBadge("fixture coverage", totalCovered, totalTotal, report.OverallPercentage);
+            File.WriteAllText(bjPath, badgeJson);
+            Console.Error.WriteLine($"Written to {bjPath}");
+        }
+
         if (cliArgs.MinCoverage is { } min && report.OverallPercentage < min)
         {
             Console.Error.WriteLine($"qf-trace: overall coverage {report.OverallPercentage:F1}% is below threshold {min}%");
