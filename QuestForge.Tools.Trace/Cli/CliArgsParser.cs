@@ -5,7 +5,7 @@ public static class CliArgsParser
     // Value-consuming flags (require a following token)
     private static readonly HashSet<string> ValueFlags = new(StringComparer.Ordinal)
     {
-        "--quest-data", "--out", "--format", "--sqpack", "--min",
+        "--quest-data", "--out", "--format", "--sqpack", "--min", "--markdown", "--badge",
     };
 
     // Boolean flags (no following token)
@@ -56,6 +56,8 @@ public static class CliArgsParser
         bool    positionalSeen = false;
         bool    withTrace      = true; // default ON for extract-fixture
         int?    minCoverage    = null;
+        string? markdownPath   = null;
+        string? badgePath      = null;
 
         int i = 1;
         while (i < args.Length)
@@ -79,6 +81,8 @@ public static class CliArgsParser
                         case "--out":        outputPath    = value; break;
                         case "--format":     format        = value; break;
                         case "--sqpack":     sqpackPath    = value; break;
+                        case "--markdown":   markdownPath  = value; break;
+                        case "--badge":      badgePath     = value; break;
                         case "--min":
                             if (!int.TryParse(value, out var minVal))
                             {
@@ -149,7 +153,9 @@ public static class CliArgsParser
             UnknownToken:  null,
             ParseError:    parseError,
             WithTrace:     withTrace,
-            MinCoverage:   minCoverage);
+            MinCoverage:   minCoverage,
+            MarkdownPath:  markdownPath,
+            BadgePath:     badgePath);
     }
 
     private static CliArgs Default(CliSubcommand subcommand) =>
