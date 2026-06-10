@@ -37,6 +37,7 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(RegisterGearsetStep),   "register-gearset")]
 [JsonDerivedType(typeof(OpenCoffersStep),       "open-coffers")]
 [JsonDerivedType(typeof(AethernetStep),         "aethernet")]
+[JsonDerivedType(typeof(UseItemOnObjectStep),  "use-item-on-object")]
 public class Step
 {
     public string Id { get; init; } = default!;
@@ -178,6 +179,15 @@ public sealed class UseItemStep : Step
     public uint? TargetNpcId { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Position3? TargetPosition { get; init; }
+}
+
+// UseItemOnObjectStep — synced with questforge/QuestForge.Schema/Step.cs
+public sealed class UseItemOnObjectStep : Step
+{
+    public uint InteractableId { get; init; }
+    public Position3 Position { get; init; } = default!;
+    public ItemKind Kind { get; init; }
+    public uint ItemId { get; init; }
 }
 
 // UseActionStep — synced with questforge/QuestForge.Schema/Step.cs
