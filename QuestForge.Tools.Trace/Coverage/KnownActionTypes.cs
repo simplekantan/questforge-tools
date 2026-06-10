@@ -8,7 +8,7 @@ public static class KnownActionTypes
         "useaethernet", "teleport", "wait", "awaituser", "done",
         "engage", "equipgear", "equipbestgear", "changejob",
         "registergearset", "opencoffer", "useaction", "useemote",
-        "useitem", "saychatmessage", "attune",
+        "useitem", "useitemonobject", "saychatmessage", "attune",
         "entersingleplayerduty", "enterduty",
     };
 }

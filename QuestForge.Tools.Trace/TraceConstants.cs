@@ -20,6 +20,7 @@ internal static class TraceConstants
     internal const string ActionUseAction    = "useaction";
     internal const string ActionUseEmote         = "useemote";
     internal const string ActionUseItem          = "useitem";         // lowercased from "UseItem"
+    internal const string ActionUseItemOnObject  = "useitemonobject"; // lowercased from "UseItemOnObject"
     internal const string ActionSayChatMessage   = "saychatmessage";  // lowercased from "SayChatMessage"
     internal const string ActionEngage           = "engage";
     internal const string ActionEquipGear        = "equipgear";      // lowercased from "EquipGear"

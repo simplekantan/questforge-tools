@@ -976,4 +976,136 @@ public sealed class CapabilityInferrerTests
 
         Assert.Contains("step:aethernet", caps);
     }
+
+    // =========================================================================
+    // S3_T1/T2 — UseItemOnObjectStep capability inference (Slice 3 tooling catch-up)
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithUseItemOnObjectStep_EmitsStepUseItemOnObject()
+    {
+        /*
+         * RED: Will fail until Builder adds [typeof(UseItemOnObjectStep)] = "step:use-item-on-object"
+         *      to CapabilityInferrer.StepCapabilities.
+         *
+         * CONTRACT: Given a QuestDefinition with one UseItemOnObjectStep
+         *             (InteractableId=2001500, Position=(81.5,7.0,32.2),
+         *              Kind=KeyItem, ItemId=2002001,
+         *              Expect="questFlag(95001, 3)"),
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result contains "step:use-item-on-object"
+         *                AND the result contains "predicate:questFlag"
+         *                AND the result is sorted alphabetically.
+         *
+         * BUILDER GUIDANCE: Add to StepCapabilities dictionary:
+         *   [typeof(UseItemOnObjectStep)] = "step:use-item-on-object",
+         */
+
+        // Arrange
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 95001u,
+            Name              = "UseItemOnObject Cap Test",
+            Expansion         = "arr",
+            Category          = "side",
+            SupportStatus     = new SupportStatus { Implementation = "partial", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new UseItemOnObjectStep
+                        {
+                            Id            = "use-potion-on-device",
+                            InteractableId = 2001500u,
+                            Position      = new Position3(81.5f, 7.0f, 32.2f),
+                            Kind          = ItemKind.KeyItem,
+                            ItemId        = 2002001u,
+                            Expect        = new PredicateExpect { Predicate = "questFlag(95001, 3)" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.Contains("step:use-item-on-object", caps);
+        Assert.Contains("predicate:questFlag", caps);
+
+        // Verify sorted: predicate:questFlag < step:use-item-on-object (ordinal)
+        var list = caps.ToList();
+        var predIdx = list.IndexOf("predicate:questFlag");
+        var stepIdx = list.IndexOf("step:use-item-on-object");
+        Assert.True(predIdx < stepIdx,
+            "predicate:questFlag should sort before step:use-item-on-object");
+    }
+
+    [Fact]
+    public void Infer_QuestWithoutUseItemOnObjectStep_DoesNotEmitStepUseItemOnObject()
+    {
+        /*
+         * CONTRACT: Given the 66130 baseline quest (TravelStep + TalkStep only),
+         *           When CapabilityInferrer.Infer(quest),
+         *           Then the result does NOT contain "step:use-item-on-object".
+         *
+         * This test explicitly pins the negative case: adding UseItemOnObjectStep
+         * to StepCapabilities does not cause it to appear in quests that do not use it.
+         *
+         * Expected to PASS immediately (the 66130 quest has no UseItemOnObjectStep,
+         * so the tag cannot appear regardless of StepCapabilities dict contents).
+         */
+
+        // Arrange — reuse the same 66130 definition as the baseline test
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 66130u,
+            Name              = "Coming to Ul'dah",
+            Expansion         = "arr",
+            Category          = "msq",
+            Enabled           = true,
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements { MinLevel = 1, Prereqs = [] },
+            AcceptFrom        = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new TravelStep
+                        {
+                            Id          = "travel-to-wymond",
+                            Destination = new TravelDestination(182, new Position3(35.56f, 4.0f, -151.18f)),
+                            Expect      = new PredicateExpect
+                                { Predicate = "playerNear({\"x\":35.56,\"y\":4.0,\"z\":-151.18}, 3)" }
+                        },
+                        new TalkStep
+                        {
+                            Id     = "talk-to-wymond",
+                            Target = new NpcLocation(1003987u, 182, new Position3(35.56f, 4.0f, -151.18f)),
+                            Expect = new PredicateExpect { Predicate = "questSequence(66130) >= 255" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        // Act
+        var caps = CapabilityInferrer.Infer(quest);
+
+        // Assert
+        Assert.DoesNotContain("step:use-item-on-object", caps);
+    }
 }

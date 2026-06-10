@@ -42,6 +42,7 @@ public sealed class TraceToFixtureExtractor
         (["step:purchase-item", "step:talk", "step:travel"], "with-purchase-item.json"),
         (["step:register-gearset", "step:talk", "step:travel"], "with-register-gearset.json"),
         (["step:open-coffers", "step:talk", "step:travel"], "with-open-coffers.json"),
+        (["step:talk", "step:travel", "step:use-item-on-object"], "with-use-item-on-object.json"),
         (["step:dungeon-trial"], "with-dungeon-trial.json"),
         (["step:aethernet", "step:travel"], "with-aethernet.json"),
     ];
@@ -59,13 +60,16 @@ public sealed class TraceToFixtureExtractor
         ("step:fragment",       "with-fragments.json"),
         ("step:attune",         "with-attunement.json"),
         ("step:hand-over-item", "with-hand-over-item.json"),
-        ("step:turn-in",        "with-turn-in.json"),
-        ("step:accept",         "with-accept.json"),
-        ("step:interact-object","with-interact-object.json"),
-        ("step:pickup-item",    "with-pickup-item.json"),
+        ("step:turn-in",            "with-turn-in.json"),
+        ("step:use-item-on-object", "with-use-item-on-object.json"),
+        ("step:accept",             "with-accept.json"),
+        ("step:interact-object",    "with-interact-object.json"),
+        ("step:pickup-item",        "with-pickup-item.json"),
         // Catch-up: newer step shapes. Action precedes emote (combat actions are more
-        // distinguishing for fixture identity than emotes). Teleport and purchase-item
-        // rank below since they're less "shape-defining" within a multi-shape quest.
+        // distinguishing for fixture identity than emotes). use-item-on-object is ranked
+        // above accept (object-targeted item use is more shape-defining than an accept step).
+        // Teleport and purchase-item rank below since they're less "shape-defining" within
+        // a multi-shape quest.
         ("step:use-action",     "with-use-action.json"),
         ("step:use-emote",      "with-use-emote.json"),
         ("step:use-item",       "with-use-item.json"),

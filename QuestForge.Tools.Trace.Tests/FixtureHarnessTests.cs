@@ -254,6 +254,67 @@ public sealed class FixtureHarnessTests
     // =====================================================================
 
     // =====================================================================
+    // S3_T3/T4 — UseItemOnObjectStep filename suggestion (Slice 3 tooling catch-up)
+    // =====================================================================
+
+    /// <summary>
+    /// S3_T3 — exact capability match: step:talk + step:travel + step:use-item-on-object
+    /// maps to "with-use-item-on-object.json".
+    /// </summary>
+    [Fact]
+    public void S3_T3_SuggestFilename_UseItemOnObjectExactShape_ReturnsWithUseItemOnObject()
+    {
+        // RED: FilenameLookup does not have
+        //   (["step:talk", "step:travel", "step:use-item-on-object"], "with-use-item-on-object.json")
+        // yet, so SuggestFilename will not match the exact entry.
+        // The DistinguishingCapPriority also lacks step:use-item-on-object, so the
+        // final fallback returns "simple-linear-acceptance.json" instead.
+        //
+        // BUILDER GUIDANCE: Add to FilenameLookup:
+        //   (["step:talk", "step:travel", "step:use-item-on-object"], "with-use-item-on-object.json"),
+
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = MakeFixture("step:talk", "step:travel", "step:use-item-on-object");
+
+        var result = extractor.SuggestFilename(fixture);
+
+        Assert.Equal("with-use-item-on-object.json", result);
+    }
+
+    /// <summary>
+    /// S3_T4 — fallback via DistinguishingCapPriority: a multi-cap fixture containing
+    /// step:use-item-on-object (plus caps that prevent an exact FilenameLookup match)
+    /// resolves to "with-use-item-on-object.json" through the priority fallback.
+    /// </summary>
+    [Fact]
+    public void S3_T4_SuggestFilename_UseItemOnObjectFallback_ReturnsWithUseItemOnObject()
+    {
+        // Given a FixtureModel with Capabilities =
+        //   ["step:accept", "step:talk", "step:travel", "step:use-item-on-object"]
+        // This 4-cap set does NOT match any exact FilenameLookup entry.
+        // The fallback walks DistinguishingCapPriority and should find
+        // step:use-item-on-object before step:accept (which is not in the priority list).
+        //
+        // RED: DistinguishingCapPriority does not have
+        //   ("step:use-item-on-object", "with-use-item-on-object.json")
+        // yet, so the fallback skips it and eventually returns
+        // "with-accept.json" (from the existing step:accept priority entry)
+        // instead of the correct "with-use-item-on-object.json".
+        //
+        // BUILDER GUIDANCE: Add to DistinguishingCapPriority (between step:use-item
+        // and step:say-chat-message):
+        //   ("step:use-item-on-object", "with-use-item-on-object.json"),
+
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = MakeFixture(
+            "step:accept", "step:talk", "step:travel", "step:use-item-on-object");
+
+        var result = extractor.SuggestFilename(fixture);
+
+        Assert.Equal("with-use-item-on-object.json", result);
+    }
+
+    // =====================================================================
     // Helpers
     // =====================================================================
 
