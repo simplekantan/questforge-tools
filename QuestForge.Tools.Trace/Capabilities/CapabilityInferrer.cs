@@ -41,6 +41,7 @@ public static class CapabilityInferrer
         [typeof(TeleportStep)]            = "step:teleport",
         [typeof(RegisterGearsetStep)]     = "step:register-gearset",
         [typeof(OpenCoffersStep)]         = "step:open-coffers",
+        [typeof(UseItemOnObjectStep)]     = "step:use-item-on-object",
     };
 
     /// <summary>
