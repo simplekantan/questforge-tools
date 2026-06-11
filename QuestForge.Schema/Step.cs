@@ -38,6 +38,8 @@ namespace QuestForge.Schema;
 [JsonDerivedType(typeof(OpenCoffersStep),       "open-coffers")]
 [JsonDerivedType(typeof(AethernetStep),         "aethernet")]
 [JsonDerivedType(typeof(UseItemOnObjectStep),  "use-item-on-object")]
+[JsonDerivedType(typeof(DungeonTrialStep),      "dungeon-trial")]
+[JsonDerivedType(typeof(SinglePlayerDutyStep),  "single-player-duty")]
 public class Step
 {
     public string Id { get; init; } = default!;
@@ -311,4 +313,29 @@ public sealed class AethernetStep : Step
     public uint From { get; init; }
     public uint To { get; init; }
     public Position3 FromPosition { get; init; } = default!;
+}
+
+[JsonConverter(typeof(JsonStringEnumConverter<SpdEntryKind>))]
+public enum SpdEntryKind
+{
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("talk")]
+    Talk,
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("interact")]
+    Interact,
+    [System.Text.Json.Serialization.JsonStringEnumMemberName("proximity")]
+    Proximity
+}
+
+public sealed class DungeonTrialStep : Step
+{
+    public uint ContentFinderConditionId { get; init; }
+}
+
+public sealed class SinglePlayerDutyStep : Step
+{
+    public uint ContentFinderConditionId { get; init; }
+    public SpdEntryKind EntryKind { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public uint? EntryTargetId { get; init; }
+    public Position3 EntryPosition { get; init; } = default!;
 }

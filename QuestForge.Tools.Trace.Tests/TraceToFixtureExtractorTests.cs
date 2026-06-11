@@ -778,4 +778,78 @@ public sealed class TraceToFixtureExtractorTests
         // No exact match → fallback by priority — equip-gear-for-quest wins
         Assert.Equal("with-equip-gear-for-quest.json", extractor.SuggestFilename(fixture));
     }
+
+    // =========================================================================
+    // S3_FX_T1 through S3_FX_T4 — DungeonTrialStep / SinglePlayerDutyStep fixture naming
+    // =========================================================================
+
+    [Fact]
+    public void SuggestFilename_SinglePlayerDuty_ReturnsWithSpd()
+    {
+        // S3_FX_T1: SuggestFilename for single-player-duty capability returns with-spd.json
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:single-player-duty"],
+            QuestFile: "quests/UNKNOWN.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-spd.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_DungeonTrial_ReturnsWithDungeonTrial()
+    {
+        // S3_FX_T2: SuggestFilename for dungeon-trial capability returns with-dungeon-trial.json
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:dungeon-trial"],
+            QuestFile: "quests/UNKNOWN.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        Assert.Equal("with-dungeon-trial.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_SinglePlayerDutyWithOtherCaps_FallsBackToWithSpd()
+    {
+        // S3_FX_T3: single-player-duty wins over step:talk/step:travel in priority fallback
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:single-player-duty", "step:talk", "step:travel"],
+            QuestFile: "quests/UNKNOWN.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        // No exact match → fallback by priority — step:single-player-duty wins
+        Assert.Equal("with-spd.json", extractor.SuggestFilename(fixture));
+    }
+
+    [Fact]
+    public void SuggestFilename_DungeonTrialAndSinglePlayerDuty_DungeonTrialWins()
+    {
+        // S3_FX_T4: dungeon-trial wins over single-player-duty when both present (priority order)
+        var extractor = new TraceToFixtureExtractor();
+        var fixture = new FixtureModel(
+            SchemaVersion: "1.0.0",
+            Description: "TODO",
+            InitialState: "fresh",
+            Capabilities: ["step:dungeon-trial", "step:single-player-duty", "step:travel"],
+            QuestFile: "quests/UNKNOWN.json",
+            ExpectedTransitions: [],
+            TerminalOutcome: "done");
+
+        // No exact match → fallback by priority — dungeon-trial is higher priority than single-player-duty
+        Assert.Equal("with-dungeon-trial.json", extractor.SuggestFilename(fixture));
+    }
 }
