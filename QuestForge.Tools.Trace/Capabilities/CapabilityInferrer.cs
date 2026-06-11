@@ -42,6 +42,8 @@ public static class CapabilityInferrer
         [typeof(RegisterGearsetStep)]     = "step:register-gearset",
         [typeof(OpenCoffersStep)]         = "step:open-coffers",
         [typeof(UseItemOnObjectStep)]     = "step:use-item-on-object",
+        [typeof(DungeonTrialStep)]        = "step:dungeon-trial",
+        [typeof(SinglePlayerDutyStep)]    = "step:single-player-duty",
     };
 
     /// <summary>

@@ -414,6 +414,14 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                     ValidateDutyStep(duty, scope, ctx, errors);
                     break;
 
+                case DungeonTrialStep dungeonTrial:
+                    ValidateDungeonTrialStep(dungeonTrial, scope, ctx, errors);
+                    break;
+
+                case SinglePlayerDutyStep spd:
+                    ValidateSinglePlayerDutyStep(spd, scope, ctx, errors);
+                    break;
+
                 case UseItemStep useItem:
                     ValidateUseItemStep(useItem, scope, ctx, errors);
                     break;
@@ -538,6 +546,46 @@ public sealed class StructuralValidator(IFragmentRegistry fragments) : IValidato
                 errors.Add(E(ctx, "structural/duty-missing-required-field", scope.ToString(),
                     $"Step '{step.Id}': duty kind 'duty' requires 'contentFinderConditionId'.", stepId: step.Id));
         }
+    }
+
+    private static void ValidateDungeonTrialStep(
+        DungeonTrialStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (step.ContentFinderConditionId == 0)
+            errors.Add(E(ctx, "structural/dungeon-trial-cfc-zero", scope.ToString(),
+                $"Step '{step.Id}': DungeonTrialStep 'contentFinderConditionId' is 0; " +
+                "a valid ContentFinderCondition row ID is required.",
+                stepId: step.Id));
+    }
+
+    private static void ValidateSinglePlayerDutyStep(
+        SinglePlayerDutyStep step, ValidationScope scope, ValidationContext ctx, List<ValidationError> errors)
+    {
+        if (step.ContentFinderConditionId == 0)
+            errors.Add(E(ctx, "structural/spd-cfc-zero", scope.ToString(),
+                $"Step '{step.Id}': SinglePlayerDutyStep 'contentFinderConditionId' is 0; " +
+                "a valid ContentFinderCondition row ID is required.",
+                stepId: step.Id));
+
+        if (step.EntryKind is SpdEntryKind.Talk or SpdEntryKind.Interact
+            && step.EntryTargetId is null)
+            errors.Add(E(ctx, "structural/spd-entry-target-null", scope.ToString(),
+                $"Step '{step.Id}': EntryKind '{step.EntryKind}' requires 'entryTargetId' " +
+                "but it is null. Talk and Interact entry kinds require an entry target.",
+                stepId: step.Id));
+
+        if (step.EntryKind is SpdEntryKind.Talk or SpdEntryKind.Interact
+            && step.EntryTargetId == 0)
+            errors.Add(E(ctx, "structural/spd-entry-target-zero", scope.ToString(),
+                $"Step '{step.Id}': EntryKind '{step.EntryKind}' has 'entryTargetId' == 0; " +
+                "provide a valid NPC/EventObj DataId.",
+                stepId: step.Id));
+
+        if (step.EntryKind == SpdEntryKind.Proximity && step.EntryTargetId is not null)
+            errors.Add(E(ctx, "structural/spd-proximity-has-target", scope.ToString(),
+                $"Step '{step.Id}': EntryKind 'proximity' but 'entryTargetId' is set. " +
+                "Proximity entries use area triggers, not interactable targets.",
+                stepId: step.Id));
     }
 
     // ValidateUseItemStep — rewritten for new flat schema shape (Decision UI11 / USE_ITEM_STEP_PLAN.md)

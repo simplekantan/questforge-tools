@@ -1108,4 +1108,181 @@ public sealed class CapabilityInferrerTests
         // Assert
         Assert.DoesNotContain("step:use-item-on-object", caps);
     }
+
+    // =========================================================================
+    // S3_CI_T1 through S3_CI_T4 — DungeonTrialStep / SinglePlayerDutyStep capabilities
+    // =========================================================================
+
+    [Fact]
+    public void Infer_QuestWithDungeonTrialStep_EmitsStepDungeonTrial()
+    {
+        // S3_CI_T1: DungeonTrialStep emits step:dungeon-trial capability
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 90001u,
+            Name              = "Dungeon Trial Test",
+            Expansion         = "arr",
+            Category          = "msq",
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new DungeonTrialStep
+                        {
+                            Id                       = "enter-dungeon",
+                            ContentFinderConditionId = 2,
+                            Expect                   = new PredicateExpect { Predicate = "questSequence(90001) >= 3" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:dungeon-trial", caps);
+        Assert.Contains("predicate:questSequence", caps);
+    }
+
+    [Fact]
+    public void Infer_QuestWithSinglePlayerDutyStep_EmitsStepSinglePlayerDuty()
+    {
+        // S3_CI_T2: SinglePlayerDutyStep emits step:single-player-duty capability
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 91001u,
+            Name              = "SPD Test",
+            Expansion         = "arr",
+            Category          = "msq",
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new SinglePlayerDutyStep
+                        {
+                            Id                       = "enter-spd",
+                            ContentFinderConditionId = 830,
+                            EntryKind                = SpdEntryKind.Talk,
+                            EntryTargetId            = 1045123u,
+                            EntryPosition            = new Position3(10f, 0f, 10f),
+                            Expect                   = new PredicateExpect { Predicate = "questSequence(91001) >= 3" }
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:single-player-duty", caps);
+        Assert.Contains("predicate:questSequence", caps);
+    }
+
+    [Fact]
+    public void Infer_OldDutyStepKindDuty_StillEmitsStepDutyAndStepDungeonTrial()
+    {
+        // S3_CI_T3: Old DutyStep still emits step:duty (coexistence); kind="duty" also emits step:dungeon-trial
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 90002u,
+            Name              = "Legacy Duty Test",
+            Expansion         = "arr",
+            Category          = "msq",
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new DutyStep
+                        {
+                            Id                       = "enter-duty-legacy",
+                            Kind                     = "duty",
+                            ContentFinderConditionId = 2
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:duty", caps);
+        Assert.Contains("step:dungeon-trial", caps);
+        Assert.DoesNotContain("step:single-player-duty", caps);
+    }
+
+    [Fact]
+    public void Infer_QuestWithBothDungeonTrialAndSinglePlayerDuty_EmitsBothCapabilities()
+    {
+        // S3_CI_T4: Quest with both DungeonTrialStep and SinglePlayerDutyStep emits both capabilities
+        var quest = new QuestDefinition
+        {
+            SchemaVersion     = "1.0.0",
+            Id                = 90003u,
+            Name              = "Mixed Duty Test",
+            Expansion         = "arr",
+            Category          = "msq",
+            SupportStatus     = new SupportStatus { Implementation = "complete", KnownIssues = [] },
+            LastVerifiedPatch = "7.4",
+            Requirements      = new Requirements(),
+            AcceptFrom        = new NpcLocation(0u, 0, new Position3(0f, 0f, 0f)),
+            Sequences =
+            [
+                new QuestSequence
+                {
+                    Sequence = 0,
+                    Steps =
+                    [
+                        new DungeonTrialStep
+                        {
+                            Id                       = "enter-dungeon",
+                            ContentFinderConditionId = 2
+                        },
+                        new SinglePlayerDutyStep
+                        {
+                            Id                       = "enter-spd",
+                            ContentFinderConditionId = 830,
+                            EntryKind                = SpdEntryKind.Talk,
+                            EntryTargetId            = 1045123u,
+                            EntryPosition            = new Position3(10f, 0f, 10f)
+                        }
+                    ]
+                }
+            ]
+        };
+
+        var caps = CapabilityInferrer.Infer(quest);
+
+        Assert.Contains("step:dungeon-trial", caps);
+        Assert.Contains("step:single-player-duty", caps);
+
+        // Verify sorted: dungeon-trial < single-player-duty (ordinal: 'd' < 's')
+        var list = caps.ToList();
+        var dungeonIdx = list.IndexOf("step:dungeon-trial");
+        var spdIdx     = list.IndexOf("step:single-player-duty");
+        Assert.True(dungeonIdx < spdIdx, "step:dungeon-trial should sort before step:single-player-duty");
+    }
 }

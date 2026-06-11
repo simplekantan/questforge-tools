@@ -44,6 +44,7 @@ public sealed class TraceToFixtureExtractor
         (["step:open-coffers", "step:talk", "step:travel"], "with-open-coffers.json"),
         (["step:talk", "step:travel", "step:use-item-on-object"], "with-use-item-on-object.json"),
         (["step:dungeon-trial"], "with-dungeon-trial.json"),
+        (["step:single-player-duty"], "with-spd.json"),
         (["step:aethernet", "step:travel"], "with-aethernet.json"),
     ];
 
@@ -52,10 +53,11 @@ public sealed class TraceToFixtureExtractor
     // the suggested filename.
     private static readonly (string Cap, string Filename)[] DistinguishingCapPriority =
     [
-        ("step:aethernet",      "with-aethernet.json"),
-        ("step:dungeon-trial",  "with-dungeon-trial.json"),
-        ("step:duty",           "with-dungeon.json"),
-        ("step:spd",            "with-spd.json"),
+        ("step:aethernet",          "with-aethernet.json"),
+        ("step:dungeon-trial",      "with-dungeon-trial.json"),
+        ("step:single-player-duty", "with-spd.json"),
+        ("step:duty",               "with-dungeon.json"),
+        ("step:spd",                "with-spd.json"),
         ("step:branch",         "with-branching.json"),
         ("step:fragment",       "with-fragments.json"),
         ("step:attune",         "with-attunement.json"),
