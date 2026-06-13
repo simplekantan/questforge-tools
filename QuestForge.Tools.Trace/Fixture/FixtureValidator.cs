@@ -124,10 +124,15 @@ public sealed class FixtureValidator
         {
             if (transition.StepId != null && !validStepIds.Contains(transition.StepId))
             {
-                errors.Add(new FixtureValidationIssue(
-                    "fixture/step-id-unknown",
-                    $"step id '{transition.StepId}' not found in quest {quest.Id}",
-                    StepId: transition.StepId));
+                var colonIdx = transition.StepId.LastIndexOf(':');
+                var innerId = colonIdx >= 0 ? transition.StepId[(colonIdx + 1)..] : null;
+                if (innerId is null || !validStepIds.Contains(innerId))
+                {
+                    errors.Add(new FixtureValidationIssue(
+                        "fixture/step-id-unknown",
+                        $"step id '{transition.StepId}' not found in quest {quest.Id}",
+                        StepId: transition.StepId));
+                }
             }
         }
 
