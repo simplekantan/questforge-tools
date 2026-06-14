@@ -31,4 +31,5 @@ public sealed record InitialOverrides(
     int? QuestSequence = null,
     int[]? SlotsEquipped = null,
     Dictionary<string, int>? Items = null,
-    int? Job = null);
+    int? Job = null,
+    int[]? Attuned = null);
